@@ -366,6 +366,23 @@ def<{ id: string }>({
   },
 });
 
+// ----- host pixel import -----
+// Pixel payloads are supplied out-of-band by the host (services.takePixels), so this command is
+// NOT semantically replayable from params alone and is marked non-recordable for Actions.
+def<{ name: string; x: number; y: number }>({
+  type: 'layer.placePixels', version: 1, recordable: false, label: (p: any) => `Place ${p.name}`,
+  schema: S.obj({ name: S.str(256), x: S.int(-1e6, 1e6), y: S.int(-1e6, 1e6) }),
+  execute(ctx, p) {
+    const pixels = ctx.services.takePixels?.();
+    if (!pixels) throw new CommandError('failed', 'No pixel data supplied by host.');
+    const layer = createRasterLayer(ctx.ids, p.name);
+    layer.pixels = pixels;
+    layer.offset = { x: p.x, y: p.y };
+    ctx.tx.apply({ op: 'layer.insert', parentId: null, index: ctx.doc.layers.length, layer });
+    ctx.result.layerId = layer.id;
+  },
+});
+
 // ----- document -----
 def<{ name: string }>({
   type: 'doc.rename', version: 1, label: () => 'Rename Document', schema: S.obj({ name: S.str(256, { min: 1 }) }),

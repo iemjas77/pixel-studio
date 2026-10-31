@@ -5,9 +5,9 @@ recorded in `docs/HANDOVER.md`. Milestones stay open otherwise.
 
 | M | Scope | Acceptance (evidence) | Status |
 |---|---|---|---|
-| M0 | Specs 01–05, repo, toolchain | five docs committed; toolchain verified (node, npm, electron binary, vitest) | see HANDOVER |
-| M1 | Document model, ops, command engine, history, tiles, `.pstudio` roundtrip | tests: tile boundaries/sparse alloc; op inverse exactness; transaction rollback; undo/redo exactness, redo invalidation, bounded history; strokes replay-deterministic; native write→read byte-equal pixels; malformed/truncated/bomb/unsupported-version rejected with typed errors; unknown data preserved; atomic write interrupted-save test | |
-| M2 | Electron workspace + foundational tools | `npm run build` OK; Electron launches under Xvfb; E2E scenario 1 & 4 automated; scenario 2 (import→layers→mask→text→export) automated; every visible control wired to a command; screenshot evidence | |
+| M0 | Specs 01–05, repo, toolchain | five docs committed; toolchain verified (node, npm, electron binary, vitest) | done |
+| M1 | Document model, ops, command engine, history, tiles, `.pstudio` roundtrip | tests: tile boundaries/sparse alloc; op inverse exactness; transaction rollback; undo/redo exactness, redo invalidation, bounded history; strokes replay-deterministic; native write→read byte-equal pixels; malformed/truncated/bomb/unsupported-version rejected with typed errors; unknown data preserved; atomic write interrupted-save test | done |
+| M2 | Electron workspace + foundational tools | `npm run build` OK; Electron launches under Xvfb; E2E scenario 1 & 4 automated; scenario 2 (import→layers→mask→text→export) automated; every visible control wired to a command; screenshot evidence | done (scenarios 1, 2, 4) |
 | M3 | GPU composition + colour reference | WebGL2 compositor agrees with CPU reference within documented ΔE/8-bit tolerance for all blend modes incl. masks; context-loss recovery test; linear-light option; ICC design validated | planned |
 | M4 | Actions, batch, first interchange | action record/replay (undoable, validated); batch with isolation/cancel/errors; flattened PSD *or* TIFF export validated by an independent tool | planned |
 | M5 | Tested preview + handover | all E2E pass; performance/memory table recorded; known-defect list | planned |

@@ -14,6 +14,8 @@ export class CommandError extends Error {
 export interface Services {
   /** Rasterize text into layer-local RGBA8 tiles. Provided by the host (Canvas 2D in the app). */
   rasterizeText?: (t: TextData) => TileStore;
+  /** One-shot supply of decoded pixels for `layer.placePixels`. */
+  takePixels?: () => TileStore | null;
 }
 
 export class Tx {
@@ -39,6 +41,8 @@ export interface HandlerContext {
 export interface CommandDef {
   type: string;
   version: number;
+  /** false = needs host-supplied data; cannot be replayed from params alone (Actions skip it). */
+  recordable?: boolean;
   schema: Schema;
   label(p: any, doc: PsDocument): string;
   /** Throw CommandError('blocked', …) when preconditions (locks, wrong layer kind…) fail. */

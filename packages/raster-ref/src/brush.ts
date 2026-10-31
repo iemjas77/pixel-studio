@@ -37,6 +37,7 @@ export class StrokeSession {
   private finished = false;
   private bpp: number;
   readonly dirty = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  private take = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
 
   constructor(
     readonly store: TileStore,
@@ -94,6 +95,8 @@ export class StrokeSession {
     const y0 = Math.floor(cy - r - 1), y1 = Math.ceil(cy + r + 1);
     this.dirty.x0 = Math.min(this.dirty.x0, x0); this.dirty.y0 = Math.min(this.dirty.y0, y0);
     this.dirty.x1 = Math.max(this.dirty.x1, x1); this.dirty.y1 = Math.max(this.dirty.y1, y1);
+    this.take.x0 = Math.min(this.take.x0, x0); this.take.y0 = Math.min(this.take.y0, y0);
+    this.take.x1 = Math.max(this.take.x1, x1); this.take.y1 = Math.max(this.take.y1, y1);
     const covLen = TILE_SIZE * TILE_SIZE;
     const touched = new Set<string>();
     for (let y = y0; y < y1; y++) {
@@ -169,6 +172,15 @@ export class StrokeSession {
   get dirtyRect() {
     const d = this.dirty;
     return d.x1 < d.x0 ? null : { x: d.x0, y: d.y0, w: d.x1 - d.x0, h: d.y1 - d.y0 };
+  }
+
+  /** Layer-local rect changed since the previous call (for incremental redraw), or null. */
+  takeDirtyRect() {
+    const d = this.take;
+    if (d.x1 < d.x0) return null;
+    const r = { x: d.x0, y: d.y0, w: d.x1 - d.x0, h: d.y1 - d.y0 };
+    d.x0 = Infinity; d.y0 = Infinity; d.x1 = -Infinity; d.y1 = -Infinity;
+    return r;
   }
 
   finish(): TileDiff {

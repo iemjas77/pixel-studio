@@ -14,7 +14,7 @@
     "build": "npm run build:editor && npm run build:desktop",
     "start": "npm run build && electron .",
     "dev:editor": "vite --config apps/editor/vite.config.ts",
-    "test:e2e": "npm run build && vitest run --config vitest.e2e.config.ts",
+    "test:e2e": "npm run build && xvfb-run -a vitest run --config vitest.e2e.config.ts",
     "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {

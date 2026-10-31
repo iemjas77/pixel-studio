@@ -51,7 +51,7 @@ offset 0   magic  "PSTUDIO\0"                    8 bytes
 | Zoom/pan/fit | wheel zoom at cursor, Space/hand pan, Fit, 100 %, zoom field | no | ✅ |
 | Layers | add raster, delete, duplicate, reorder (buttons + drag), rename | 1 entry each | ✅ |
 | Layer state | visibility, lock (pixels/position/all), opacity, 12 blend modes | 1 entry each (slider = 1 entry per gesture) | ✅ |
-| Groups | create group from layer, nested compose | yes | 🟡 (no UI drag-into, no pass-through mode) |
+| Groups | create group from layer, nested compose | yes | 🟡 (no pass-through mode, no group transform) |
 | Brush | size, hardness, opacity, flow, spacing, colour, pressure→size/opacity, interpolation | 1 entry/stroke | ✅ |
 | Eraser | same engine, on pixels; on mask paints black | 1 entry/stroke | ✅ |
 | Rect selection | marquee, Select All, Deselect; clips brush/eraser/fill/delete | yes | ✅ |
