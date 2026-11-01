@@ -20,7 +20,7 @@ export function buildRenderTree(layers: Layer[], resolve?: PixelResolver): Rende
 }
 
 export function composeDocument(doc: PsDocument, x: number, y: number, w: number, h: number, resolve?: PixelResolver, isCancelled?: () => boolean) {
-  return composeRegion(buildRenderTree(doc.layers, resolve), x, y, w, h, { isCancelled });
+  return composeRegion(buildRenderTree(doc.layers, resolve), x, y, w, h, { isCancelled, linear: doc.canvas.blendSpace === 'linear' });
 }
 
 /** Whole-canvas flatten, tile by tile, into a dense RGBA8 buffer. */
@@ -30,7 +30,7 @@ export function flattenDocument(doc: PsDocument, resolve?: PixelResolver, isCanc
   const tree = buildRenderTree(doc.layers, resolve);
   for (let ty = 0; ty < height; ty += TILE_SIZE) for (let tx = 0; tx < width; tx += TILE_SIZE) {
     const w = Math.min(TILE_SIZE, width - tx), h = Math.min(TILE_SIZE, height - ty);
-    const t = composeRegion(tree, tx, ty, w, h, { isCancelled });
+    const t = composeRegion(tree, tx, ty, w, h, { isCancelled, linear: doc.canvas.blendSpace === 'linear' });
     for (let y = 0; y < h; y++) out.set(t.subarray(y * w * 4, (y + 1) * w * 4), ((ty + y) * width + tx) * 4);
   }
   return out;
@@ -46,7 +46,7 @@ export function renderPreview(doc: PsDocument, max = 256, resolve?: PixelResolve
   const tree = buildRenderTree(doc.layers, resolve);
   for (let ty = 0; ty < height; ty += TILE_SIZE) for (let tx = 0; tx < width; tx += TILE_SIZE) {
     const w = Math.min(TILE_SIZE, width - tx), h = Math.min(TILE_SIZE, height - ty);
-    const t = composeRegion(tree, tx, ty, w, h);
+    const t = composeRegion(tree, tx, ty, w, h, { linear: doc.canvas.blendSpace === 'linear' });
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4, a = t[i + 3] / 255;
       const pi = Math.floor((ty + y) / k) * pw + Math.floor((tx + x) / k);

@@ -1,5 +1,6 @@
 import { TILE_SIZE, composeRegion, floorDiv, type Rect } from '@ps/raster';
 import { buildRenderTree, type PixelResolver, type PsDocument } from '@ps/document';
+import type { GpuCompositor } from './gpu';
 
 export interface ViewState { zoom: number; panX: number; panY: number }
 
@@ -8,7 +9,14 @@ interface CTile { canvas: HTMLCanvasElement; valid: boolean; data: Uint8ClampedA
 /** Lazily composited tile cache for display (CPU reference compositor → canvas tiles). */
 export class CompositeCache {
   private tiles = new Map<string, CTile>();
+  /** Optional GPU compositor; CPU reference is used when absent/unavailable. */
+  gpu: GpuCompositor | null = null;
   constructor(private getDoc: () => PsDocument, private resolve: PixelResolver) {}
+  private compose(doc: PsDocument, x: number, y: number, w: number, h: number) {
+    const tree = buildRenderTree(doc.layers, this.resolve);
+    const opts = { linear: doc.canvas.blendSpace === 'linear' };
+    return this.gpu ? this.gpu.compose(tree, x, y, w, h, opts) : composeRegion(tree, x, y, w, h, opts);
+  }
 
   invalidateAll() { for (const t of this.tiles.values()) t.valid = false; }
   invalidateRect(r: Rect) {
@@ -30,7 +38,7 @@ export class CompositeCache {
     const key = `${tx},${ty}`;
     let t = this.tiles.get(key);
     if (t && t.valid) return t.canvas;
-    const data = composeRegion(buildRenderTree(doc.layers, this.resolve), x, y, w, h);
+    const data = this.compose(doc, x, y, w, h);
     if (!t) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
@@ -47,7 +55,7 @@ export class CompositeCache {
   sample(x: number, y: number): [number, number, number, number] | null {
     const doc = this.getDoc();
     if (x < 0 || y < 0 || x >= doc.canvas.width || y >= doc.canvas.height) return null;
-    const out = composeRegion(buildRenderTree(doc.layers, this.resolve), x, y, 1, 1);
+    const out = composeRegion(buildRenderTree(doc.layers, this.resolve), x, y, 1, 1, { linear: doc.canvas.blendSpace === 'linear' });
     return [out[0], out[1], out[2], out[3]];
   }
 }

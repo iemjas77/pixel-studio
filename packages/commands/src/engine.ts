@@ -245,7 +245,7 @@ export class Engine {
           }
           break;
         }
-        case 'doc.set': if ('selection' in op.props) d.selection = true; if ('name' in op.props) d.structure = true; break;
+        case 'doc.set': if ('selection' in op.props) d.selection = true; if ('name' in op.props) d.structure = true; if ('blendSpace' in op.props) { d.all = true; } break;
         default: d.all = true; d.structure = true;
       }
     }

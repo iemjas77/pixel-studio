@@ -389,6 +389,12 @@ def<{ name: string }>({
   execute(ctx, p) { ctx.tx.apply({ op: 'doc.set', props: { name: p.name } }); },
 });
 
+def<{ space: 'srgb' | 'linear' }>({
+  type: 'doc.blendSpace', version: 1, label: (p: any) => (p.space === 'linear' ? 'Blend in Linear Light' : 'Blend in sRGB'),
+  schema: S.obj({ space: S.enum(['srgb', 'linear']) }),
+  execute(ctx, p) { if ((ctx.doc.canvas.blendSpace ?? 'srgb') !== p.space) ctx.tx.apply({ op: 'doc.set', props: { blendSpace: p.space } }); },
+});
+
 export function createDefaultRegistry(): CommandRegistry {
   const r = new CommandRegistry();
   for (const d of defs) r.register(d);

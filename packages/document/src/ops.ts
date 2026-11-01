@@ -12,7 +12,7 @@ export interface LayerProps {
   name?: string; visible?: boolean; lock?: Lock; opacity?: number; blendMode?: BlendMode;
   offset?: { x: number; y: number }; text?: TextData; mask?: MaskState | null; expanded?: boolean;
 }
-export interface DocProps { name?: string; selection?: Selection | null; guides?: Guide[] }
+export interface DocProps { name?: string; selection?: Selection | null; guides?: Guide[]; blendSpace?: 'srgb' | 'linear' }
 
 export type Op =
   | { op: 'layer.insert'; parentId: string | null; index: number; layer: Layer }
@@ -163,6 +163,10 @@ export function applyOp(doc: PsDocument, op: Op): Op {
           if (s.kind !== 'rect' || ![s.x, s.y, s.w, s.h].every(Number.isInteger) || s.w <= 0 || s.h <= 0) throw new OpError('invalid selection');
         }
         inv.selection = doc.selection; doc.selection = s ?? null;
+      }
+      if ('blendSpace' in p) {
+        if (p.blendSpace !== 'srgb' && p.blendSpace !== 'linear') throw new OpError('invalid blendSpace');
+        inv.blendSpace = doc.canvas.blendSpace ?? 'srgb'; doc.canvas.blendSpace = p.blendSpace;
       }
       if ('guides' in p) { inv.guides = doc.guides; doc.guides = p.guides ?? []; }
       return { op: 'doc.set', props: inv };

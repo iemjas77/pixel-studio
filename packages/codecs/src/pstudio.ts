@@ -9,7 +9,7 @@ import { PsFormatError } from './errors';
 
 export const MAGIC = new Uint8Array([0x50, 0x53, 0x54, 0x55, 0x44, 0x49, 0x4f, 0x00]); // "PSTUDIO\0"
 export const FORMAT_MAJOR = 1;
-export const FORMAT_MINOR = 0;
+export const FORMAT_MINOR = 1; // 1.1: optional canvas.blendSpace
 const HEADER_SIZE = 28;
 
 export const LIMITS = {
@@ -224,6 +224,11 @@ function bool(v: unknown, what: string): boolean {
   return v;
 }
 
+function parseBlendSpace(v: unknown): 'srgb' | 'linear' {
+  if (v === 'srgb' || v === 'linear') return v;
+  throw bad('canvas.blendSpace must be "srgb" or "linear"');
+}
+
 function parseDocument(d: Record<string, unknown>, warnings: string[]): PsDocument {
   const c = d.canvas;
   if (!isObj(c)) throw bad('canvas missing');
@@ -238,6 +243,7 @@ function parseDocument(d: Record<string, unknown>, warnings: string[]): PsDocume
     canvas: {
       width, height, resolutionPpi: num(c.resolutionPpi, 1, 100000, 'canvas.resolutionPpi'), mode: 'RGB', bitDepth: 8,
       profile: { name: str(prof.name, 256, 'profile.name'), assumed: bool(prof.assumed, 'profile.assumed') },
+      ...(c.blendSpace === undefined ? {} : { blendSpace: parseBlendSpace(c.blendSpace) }),
     },
     layers: [], selection: null, guides: [],
   };

@@ -48,6 +48,8 @@ export interface Canvas {
   resolutionPpi: number;
   mode: 'RGB';
   bitDepth: 8;
+  /** Space in which layers are blended: encoded sRGB values (default) or linear light. Format ≥ 1.1. */
+  blendSpace?: 'srgb' | 'linear';
   /** Colour profile tag. Pixel Studio M1–M5 does not manage colour: sRGB is assumed. */
   profile: { name: string; assumed: boolean };
 }

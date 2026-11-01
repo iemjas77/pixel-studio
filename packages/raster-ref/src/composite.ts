@@ -25,20 +25,31 @@ export interface RenderNode {
 export class CancelledError extends Error {
   constructor() { super('cancelled'); this.name = 'CancelledError'; }
 }
-export interface ComposeOptions { isCancelled?: () => boolean }
+export interface ComposeOptions {
+  isCancelled?: () => boolean;
+  /** Blend in linear light (sRGB decoded → blend → re-encoded). Default: blend on encoded sRGB values. */
+  linear?: boolean;
+}
+
+/** IEC 61966-2-1 transfer functions on [0,1]. */
+export const srgbToLinear = (c: number) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+export const linearToSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+const LUT = new Float32Array(256);
+for (let i = 0; i < 256; i++) LUT[i] = srgbToLinear(i / 255);
 
 /** Compose region [x,x+w)×[y,y+h) of doc space; returns straight-alpha RGBA8. */
 export function composeRegion(nodes: RenderNode[], x: number, y: number, w: number, h: number, opts: ComposeOptions = {}): Uint8Array {
   const acc = new Float32Array(w * h * 4); // premultiplied
   composeInto(acc, nodes, x, y, w, h, opts);
   const out = new Uint8Array(w * h * 4);
+  const lin = !!opts.linear;
   for (let i = 0, n = w * h; i < n; i++) {
     const a = acc[i * 4 + 3];
     if (a <= 0) continue;
     const inv = 1 / a;
-    out[i * 4] = to8(acc[i * 4] * inv);
-    out[i * 4 + 1] = to8(acc[i * 4 + 1] * inv);
-    out[i * 4 + 2] = to8(acc[i * 4 + 2] * inv);
+    let r = acc[i * 4] * inv, g = acc[i * 4 + 1] * inv, b = acc[i * 4 + 2] * inv;
+    if (lin) { r = linearToSrgb(Math.min(1, Math.max(0, r))); g = linearToSrgb(Math.min(1, Math.max(0, g))); b = linearToSrgb(Math.min(1, Math.max(0, b))); }
+    out[i * 4] = to8(r); out[i * 4 + 1] = to8(g); out[i * 4 + 2] = to8(b);
     out[i * 4 + 3] = to8(a);
   }
   return out;
@@ -70,7 +81,9 @@ function composeInto(acc: Float32Array, nodes: RenderNode[], x: number, y: numbe
       if (src8) {
         const a8 = src8[i * 4 + 3];
         if (a8 === 0) continue;
-        sa = a8 / 255; sr = src8[i * 4] / 255; sg = src8[i * 4 + 1] / 255; sb = src8[i * 4 + 2] / 255;
+        sa = a8 / 255;
+        if (opts.linear) { sr = LUT[src8[i * 4]]; sg = LUT[src8[i * 4 + 1]]; sb = LUT[src8[i * 4 + 2]]; }
+        else { sr = src8[i * 4] / 255; sg = src8[i * 4 + 1] / 255; sb = src8[i * 4 + 2] / 255; }
       } else {
         const pa = srcPre![i * 4 + 3];
         if (pa <= 0) continue;

@@ -64,6 +64,10 @@ function useMenus(): { name: string; items: Item[] }[] {
       { label: 'Zoom out', shortcut: 'Ctrl+-', disabled: !has, run: () => st.zoomStep(-1) },
       { label: 'Fit on screen', shortcut: 'Ctrl+0', disabled: !has, run: () => st.fit() },
       { label: 'Actual pixels (100%)', shortcut: 'Ctrl+1', disabled: !has, run: () => st.actualSize() },
+      { label: '', sep: true },
+      { label: `Compositing: ${st.gpuMode === 'auto' ? '✓ ' : ''}GPU (auto, CPU fallback)`, disabled: !st.gpu, run: () => st.setGpuMode('auto') },
+      { label: `Compositing: ${st.gpuMode === 'cpu' ? '✓ ' : ''}CPU reference only`, run: () => st.setGpuMode('cpu') },
+      { label: `Blend in linear light (document) ${s?.doc.canvas.blendSpace === 'linear' ? '✓' : ''}`, disabled: !has, run: () => st.exec({ type: 'doc.blendSpace', params: { space: s?.doc.canvas.blendSpace === 'linear' ? 'srgb' : 'linear' } }) },
     ] },
     { name: 'Help', items: [
       { label: 'Keyboard shortcuts', run: () => { st.dialog = { kind: 'shortcuts' }; st.notify(); } },
@@ -205,6 +209,7 @@ function StatusBar() {
       {s && <>
         <span data-testid="docinfo">{s.doc.canvas.width} × {s.doc.canvas.height} px · {s.doc.canvas.resolutionPpi} ppi · {s.doc.canvas.mode}/{s.doc.canvas.bitDepth} · {s.doc.canvas.profile.assumed ? 'sRGB (assumed, unmanaged)' : s.doc.canvas.profile.name}</span>
         {sel && <span>Sel {sel.w}×{sel.h}</span>}
+        <span data-testid="backend" title="Compositing backend">{st.backendLabel}</span>
         <span id="ps-cursor" className="cursorpos">–</span>
         <span className="zoomctl">
           <button className="icon-btn txt" aria-label="Zoom out" onClick={() => st.zoomStep(-1)}>−</button>

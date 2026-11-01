@@ -153,3 +153,16 @@ describe('.pstudio native format', () => {
     expect((again.doc.unknown as any).__manifest.futureTop).toEqual({ y: 1 });
   });
 });
+
+describe('format 1.1 blendSpace', () => {
+  it('roundtrips canvas.blendSpace, defaults to undefined for old files, rejects bad values', () => {
+    const d = createDocument(ids(), { width: 10, height: 10 });
+    expect(readPstudio(writePstudio(d)).doc.canvas.blendSpace).toBeUndefined();
+    d.canvas.blendSpace = 'linear';
+    const r = readPstudio(writePstudio(d));
+    expect(r.doc.canvas.blendSpace).toBe('linear');
+    expect(r.formatVersion).toEqual({ major: 1, minor: 1 });
+    const bad = (() => { d.canvas.blendSpace = 'cmyk' as never; return writePstudio(d); })();
+    expect(() => readPstudio(bad)).toThrow(/blendSpace/);
+  });
+});

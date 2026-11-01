@@ -68,3 +68,14 @@ describe('CPU reference compositor', () => {
     expect(() => composeRegion([node(solid([1, 1, 1, 255]))], 0, 0, 2, 2, { isCancelled: () => true })).toThrow(/cancel/);
   });
 });
+
+describe('linear-light blending (CPU reference)', () => {
+  it('50% black over white: encoded blend = 128, linear blend = sRGB(0.5) ≈ 188', () => {
+    const nodes = [node(solid([255, 255, 255, 255])), node(solid([0, 0, 0, 255]), { opacity: 0.5 })];
+    expect(px(composeRegion(nodes, 0, 0, 1, 1))).toEqual([128, 128, 128, 255]);
+    expect(px(composeRegion(nodes, 0, 0, 1, 1, { linear: true }))).toEqual([188, 188, 188, 255]);
+  });
+  it('is a no-op for opaque unblended pixels (round-trips every 8-bit value)', () => {
+    for (let v = 0; v < 256; v += 5) expect(px(composeRegion([node(solid([v, v, v, 255]))], 0, 0, 1, 1, { linear: true }))).toEqual([v, v, v, 255]);
+  });
+});

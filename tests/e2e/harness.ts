@@ -14,7 +14,7 @@ export async function launch(opts: { dialogs?: (string | null)[]; userData?: str
   const userData = opts.userData ?? path.join(tmp, 'userdata');
   const app = await electron.launch({
     executablePath: path.join(ROOT, 'node_modules/electron/dist/electron'),
-    args: [ROOT, '--no-sandbox', '--disable-gpu'],
+    args: [ROOT, '--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
     env: { ...process.env, PIXEL_STUDIO_E2E: '1', PIXEL_STUDIO_USER_DATA: userData, PIXEL_STUDIO_E2E_DIALOGS: JSON.stringify(opts.dialogs ?? []) } as Record<string, string>,
   });
   const page = await app.firstWindow();

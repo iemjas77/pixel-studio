@@ -125,7 +125,7 @@ code with tests exists – not before.
 * Planned: disk-spill, tile eviction/LRU, worker parallelism, cancellation tokens
   (the compositor already takes an `AbortSignal`-like `isCancelled()`), native engine.
 
-## 6. Compositing and color [CPU reference implemented; GPU planned M3]
+## 6. Compositing and color [CPU reference + WebGL2 compositor implemented (M3); ICC planned M7]
 
 * Blend math follows the public W3C *Compositing and Blending Level 1* formulas on
   float values derived from 8-bit **encoded sRGB** (i.e. no linearisation). This is a

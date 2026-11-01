@@ -7,6 +7,7 @@ import { DEFAULT_BRUSH, TileStore, type BrushParams } from '@ps/raster';
 import { PsFormatError, readPstudio, writePstudio } from '@ps/codecs';
 import { CompositeCache, fitView, zoomAt, type ViewState, MIN_ZOOM, MAX_ZOOM } from './viewport';
 import { TextCache, rasterizeText } from './text';
+import { GpuCompositor } from './gpu';
 import { UserError, decodeImage, exportFlattened, sniffKind, type ExportFormat } from './io';
 import type { PixelStudioApi } from '../../desktop/src/preload';
 
@@ -40,6 +41,7 @@ export class DocSession {
     this.engine = new Engine(doc, { registry: createDefaultRegistry(), ids: new RandomIdSource(), services: {} });
     this.engine.services.rasterizeText = rasterizeText;
     this.cache = new CompositeCache(() => this.engine.doc, this.text.resolver);
+    this.cache.gpu = gpuForNewSession();
     this.activeLayerId = doc.layers.length ? doc.layers[doc.layers.length - 1].id : null;
   }
   get doc() { return this.engine.doc; }
@@ -47,6 +49,7 @@ export class DocSession {
 }
 
 type Listener = () => void;
+let gpuForNewSession: () => GpuCompositor | null = () => null;
 let toastSeq = 0;
 
 export class EditorStore {
@@ -66,6 +69,15 @@ export class EditorStore {
   private rafPending = false;
   private pixelHandoff: TileStore | null = null;
   textFocusRequest = 0;
+  /** GPU compositing backend (null when WebGL2 is unavailable); user may force CPU. */
+  gpu: GpuCompositor | null = (() => { try { const g = new GpuCompositor(); return g.available ? g : null; } catch { return null; } })();
+  gpuMode: 'auto' | 'cpu' = 'auto';
+  get backendLabel() { return this.gpuMode === 'auto' && this.gpu?.available ? (this.gpu.lastBackend === 'gpu' ? 'GPU' : 'GPU (idle)') : this.gpu && this.gpuMode === 'auto' ? 'CPU (GPU lost)' : 'CPU'; }
+  setGpuMode(m: 'auto' | 'cpu') {
+    this.gpuMode = m;
+    for (const s of this.sessions) { s.cache.gpu = m === 'auto' ? this.gpu : null; s.cache.invalidateAll(); }
+    this.setStatus(m === 'auto' ? (this.gpu ? 'Compositing: GPU (CPU fallback on failure)' : 'GPU unavailable; using CPU reference compositor') : 'Compositing: CPU reference');
+  }
   textDefaults = { fontFamily: 'Arial', fontSize: 48, fontWeight: 400 };
 
   // ---------- subscription ----------
@@ -414,6 +426,7 @@ export class EditorStore {
 }
 
 export const store = new EditorStore();
+gpuForNewSession = () => (store.gpuMode === 'auto' ? store.gpu : null);
 export function useStore() {
   useSyncExternalStore(store.subscribe, store.getVersion);
   return store;
