@@ -14,10 +14,11 @@ import type { PixelStudioApi } from '../../desktop/src/preload';
 
 declare global { interface Window { pixelStudio?: PixelStudioApi; __ps?: unknown } }
 
-export type ToolId = 'move' | 'marquee' | 'brush' | 'eraser' | 'text' | 'eyedropper' | 'hand' | 'zoom';
+export type ToolId = 'gradient' | 'move' | 'marquee' | 'brush' | 'eraser' | 'text' | 'eyedropper' | 'hand' | 'zoom';
 export type RGB = [number, number, number];
 
 export type Dialog =
+  | { kind: 'params'; title: string; note?: string; fields: { key: string; label: string; min: number; max: number; step: number; value: number }[]; onApply: (v: Record<string, number>) => void }
   | { kind: 'new' } | { kind: 'batch' } | { kind: 'nameAction' } | { kind: 'scale' } | { kind: 'about' } | { kind: 'shortcuts' }
   | { kind: 'export'; fmt: 'jpg' | 'webp' }
   | { kind: 'message'; title: string; message: string }
@@ -70,6 +71,12 @@ export class EditorStore {
   private rafPending = false;
   private pixelHandoff: TileStore | null = null;
   textFocusRequest = 0;
+  gradientKind: 'linear' | 'radial' = 'linear';
+  askParams(title: string, fields: { key: string; label: string; min: number; max: number; step: number; value: number }[], onApply: (v: Record<string, number>) => void, note?: string) {
+    this.dialog = { kind: 'params', title, fields, onApply, note }; this.notify();
+  }
+  adjust(kind: string, extra: Record<string, unknown> = {}) { this.withActive(l => ({ type: 'adjust.apply', params: { layerId: l.id, kind, ...extra } })); }
+  filter(kind: string, extra: Record<string, unknown> = {}) { this.withActive(l => ({ type: 'filter.apply', params: { layerId: l.id, kind, ...extra } })); }
   // ---------- actions ----------
   actions: Action[] = loadActions();
   selectedAction = 0;

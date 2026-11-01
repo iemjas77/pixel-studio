@@ -9,9 +9,10 @@ type Gesture =
   | { kind: 'stroke'; sess: StrokeSession; layerId: string; plane: 'pixels' | 'mask'; mode: 'paint' | 'erase'; off: { x: number; y: number }; pts: number[][]; brush: ReturnType<typeof store.brushParams> }
   | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number }
   | { kind: 'move'; layerId: string; startX: number; startY: number; orig: { x: number; y: number }; dx: number; dy: number }
-  | { kind: 'eyedrop'; alt: boolean };
+  | { kind: 'eyedrop'; alt: boolean }
+  | { kind: 'gradient'; x0: number; y0: number; x1: number; y1: number };
 
-const CURSORS: Record<ToolId, string> = { move: 'move', marquee: 'crosshair', brush: 'none', eraser: 'none', text: 'text', eyedropper: 'crosshair', hand: 'grab', zoom: 'zoom-in' };
+const CURSORS: Record<ToolId, string> = { gradient: 'crosshair', move: 'move', marquee: 'crosshair', brush: 'none', eraser: 'none', text: 'text', eyedropper: 'crosshair', hand: 'grab', zoom: 'zoom-in' };
 
 export function Viewport() {
   useStore();
@@ -52,6 +53,7 @@ export function Viewport() {
       if (s.doc.selection) ants(s.doc.selection);
       const gs = gesture.current;
       if (gs?.kind === 'marquee') ants(normRect(gs.x0, gs.y0, gs.x1, gs.y1));
+      if (gs?.kind === 'gradient') { g.beginPath(); g.moveTo(s.view.panX + gs.x0 * z, s.view.panY + gs.y0 * z); g.lineTo(s.view.panX + gs.x1 * z, s.view.panY + gs.y1 * z); g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke(); g.strokeStyle = '#000'; g.lineWidth = 1; g.stroke(); }
       // text layer bounds
       const l = store.activeLayer;
       if (l?.kind === 'text' && (store.tool === 'text' || store.tool === 'move')) {
@@ -127,6 +129,11 @@ export function Viewport() {
       if (l) l.offset = { ...g.orig };
       s.cache.invalidateAll();
       if (!cancel && (g.dx || g.dy)) store.exec({ type: 'layer.offset', params: { id: g.layerId, dx: g.dx, dy: g.dy } });
+    } else if (g.kind === 'gradient') {
+      const l = store.activeLayer;
+      if (!cancel && l && Math.hypot(g.x1 - g.x0, g.y1 - g.y0) >= 2) {
+        store.exec({ type: 'gradient.fill', params: { layerId: l.id, plane: s.editTarget, kind: store.gradientKind, from: [Math.round(g.x0 * 10) / 10, Math.round(g.y0 * 10) / 10], to: [Math.round(g.x1 * 10) / 10, Math.round(g.y1 * 10) / 10], c0: [...store.fg, 255], c1: [...store.bg, 255] } });
+      }
     } else if (g.kind === 'marquee') {
       if (!cancel) {
         const r = normRect(g.x0, g.y0, g.x1, g.y1);
@@ -148,6 +155,14 @@ export function Viewport() {
       case 'hand': gesture.current = { kind: 'pan', sx: e.clientX, sy: e.clientY, panX: s.view.panX, panY: s.view.panY }; break;
       case 'zoom': store.zoomStep(e.altKey ? -1 : 1, p.sx, p.sy); break;
       case 'eyedropper': gesture.current = { kind: 'eyedrop', alt: e.altKey }; sampleColor(Math.floor(p.x), Math.floor(p.y), e.altKey); break;
+      case 'gradient': {
+        const l = store.activeLayer;
+        if (!l) { store.setStatus('Select a layer first.', 'error'); break; }
+        const why = store.paintBlockReason(l.id, s.editTarget);
+        if (why) { store.setStatus(why, 'error'); break; }
+        gesture.current = { kind: 'gradient', x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+        break;
+      }
       case 'marquee': gesture.current = { kind: 'marquee', x0: Math.round(p.x), y0: Math.round(p.y), x1: Math.round(p.x), y1: Math.round(p.y) }; break;
       case 'move': {
         const l = store.activeLayer;
@@ -215,6 +230,7 @@ export function Viewport() {
           break;
         }
         case 'marquee': g.x1 = Math.round(p.x); g.y1 = Math.round(p.y); break;
+        case 'gradient': g.x1 = p.x; g.y1 = p.y; break;
         case 'move': {
           g.dx = Math.round(p.x - g.startX); g.dy = Math.round(p.y - g.startY);
           const l = findLayer(s.doc, g.layerId)?.layer;

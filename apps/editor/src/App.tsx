@@ -64,6 +64,25 @@ function useMenus(): { name: string; items: Item[] }[] {
       { label: 'Rotate 180°', disabled: !rasterL, run: () => st.transform('rot180') },
       { label: 'Scale…', disabled: !rasterL, run: () => { st.dialog = { kind: 'scale' }; st.notify(); } },
     ] },
+    { name: 'Image', items: [
+      { label: 'Crop to selection', disabled: !s?.doc.selection, run: () => { const q = s!.doc.selection!; st.exec({ type: 'canvas.crop', params: { x: q.x, y: q.y, w: q.w, h: q.h } }); st.fit(); } },
+      { label: 'Image size…', disabled: !has, run: () => st.askParams('Image size (resample all layers)', [
+        { key: 'width', label: 'Width px', min: 1, max: 16384, step: 1, value: s!.doc.canvas.width }, { key: 'height', label: 'Height px', min: 1, max: 16384, step: 1, value: s!.doc.canvas.height },
+      ], v => { st.exec({ type: 'image.resize', params: { width: Math.round(v.width), height: Math.round(v.height) } }); st.fit(); }, 'Bilinear resampling of every raster layer and mask; text size and positions scale. Reference quality (no Lanczos/bicubic yet).') },
+    ] },
+    { name: 'Adjust', items: [
+      { label: 'Invert', disabled: !rasterL, run: () => st.adjust('invert') },
+      { label: 'Desaturate', disabled: !rasterL, run: () => st.adjust('desaturate') },
+      { label: 'Brightness/Contrast…', disabled: !rasterL, run: () => st.askParams('Brightness/Contrast', [{ key: 'brightness', label: 'Brightness', min: -100, max: 100, step: 1, value: 0 }, { key: 'contrast', label: 'Contrast', min: -100, max: 100, step: 1, value: 0 }], v => st.adjust('brightnessContrast', v)) },
+      { label: 'Levels…', disabled: !rasterL, run: () => st.askParams('Levels', [{ key: 'inBlack', label: 'Input black', min: 0, max: 254, step: 1, value: 0 }, { key: 'gamma', label: 'Gamma', min: 0.1, max: 5, step: 0.05, value: 1 }, { key: 'inWhite', label: 'Input white', min: 1, max: 255, step: 1, value: 255 }, { key: 'outBlack', label: 'Output black', min: 0, max: 255, step: 1, value: 0 }, { key: 'outWhite', label: 'Output white', min: 0, max: 255, step: 1, value: 255 }], v => st.adjust('levels', v), 'Applies to all RGB channels together. Destructive (no adjustment layers yet).') },
+      { label: 'Hue/Saturation…', disabled: !rasterL, run: () => st.askParams('Hue/Saturation', [{ key: 'hue', label: 'Hue', min: -180, max: 180, step: 1, value: 0 }, { key: 'saturation', label: 'Saturation', min: -100, max: 100, step: 1, value: 0 }, { key: 'lightness', label: 'Lightness', min: -100, max: 100, step: 1, value: 0 }], v => st.adjust('hueSaturation', v)) },
+      { label: 'Curves (3-point)…', disabled: !rasterL, run: () => st.askParams('Curves', [{ key: 'shadows', label: 'Shadows (at 64)', min: 0, max: 255, step: 1, value: 64 }, { key: 'mid', label: 'Midtones (at 128)', min: 0, max: 255, step: 1, value: 128 }, { key: 'high', label: 'Highlights (at 192)', min: 0, max: 255, step: 1, value: 192 }], v => st.adjust('curves', { points: [[0, 0], [64, v.shadows], [128, v.mid], [192, v.high], [255, 255]] }), 'Monotone spline through fixed anchor points; a full curve editor is planned.') },
+    ] },
+    { name: 'Filter', items: [
+      { label: 'Gaussian Blur…', disabled: !rasterL, run: () => st.askParams('Gaussian Blur', [{ key: 'radius', label: 'Radius px', min: 0.5, max: 100, step: 0.5, value: 4 }], v => st.filter('blur', v)) },
+      { label: 'Sharpen (unsharp mask)…', disabled: !rasterL, run: () => st.askParams('Sharpen', [{ key: 'radius', label: 'Radius px', min: 0.5, max: 50, step: 0.5, value: 2 }, { key: 'amount', label: 'Amount', min: 0, max: 5, step: 0.1, value: 1 }], v => st.filter('sharpen', v)) },
+      { label: 'Add Noise…', disabled: !rasterL, run: () => st.askParams('Add Noise', [{ key: 'amount', label: 'Amount %', min: 0, max: 100, step: 1, value: 10 }], v => st.filter('noise', { amount: v.amount, seed: 1 + Math.floor(Math.random() * 1e6) })) },
+    ] },
     { name: 'View', items: [
       { label: 'Zoom in', shortcut: 'Ctrl+=', disabled: !has, run: () => st.zoomStep(1) },
       { label: 'Zoom out', shortcut: 'Ctrl+-', disabled: !has, run: () => st.zoomStep(-1) },
@@ -117,6 +136,7 @@ function MenuBar() {
 
 // ------------------------------------------------------------------ Tool rail
 const TOOLS: { id: ToolId; label: string; key: string }[] = [
+  { id: 'gradient', label: 'Gradient', key: 'G' },
   { id: 'move', label: 'Move', key: 'V' }, { id: 'marquee', label: 'Rectangular Marquee', key: 'M' }, { id: 'brush', label: 'Brush', key: 'B' },
   { id: 'eraser', label: 'Eraser', key: 'E' }, { id: 'text', label: 'Text', key: 'T' }, { id: 'eyedropper', label: 'Eyedropper', key: 'I' },
   { id: 'hand', label: 'Hand', key: 'H' }, { id: 'zoom', label: 'Zoom', key: 'Z' },
@@ -159,6 +179,11 @@ function OptionsBar() {
         <label className="opt chk"><input type="checkbox" checked={b.pressureSize} onChange={e => set({ pressureSize: e.target.checked })} />Pressure→size</label>
         <label className="opt chk"><input type="checkbox" checked={b.pressureOpacity} onChange={e => set({ pressureOpacity: e.target.checked })} />Pressure→flow</label>
         {s?.editTarget === 'mask' && <span className="tag">Painting on layer mask (black hides, white reveals)</span>}
+      </>}
+      {st.tool === 'gradient' && <>
+        <strong className="optname">Gradient</strong>
+        <label className="opt">Type<select value={st.gradientKind} aria-label="Gradient type" onChange={e => { st.gradientKind = e.target.value as 'linear' | 'radial'; st.notify(); }}><option value="linear">Linear</option><option value="radial">Radial</option></select></label>
+        <span className="muted">Drag on the canvas: foreground → background colour, clipped to the selection.</span>
       </>}
       {st.tool === 'marquee' && <>
         <strong className="optname">Rectangular Marquee</strong>
@@ -366,6 +391,24 @@ function BatchDialog() {
   );
 }
 
+function ParamsDialog({ d }: { d: Extract<Dialog, { kind: 'params' }> }) {
+  const [vals, setVals] = useState<Record<string, number>>(Object.fromEntries(d.fields.map(f => [f.key, f.value])));
+  return (
+    <Modal title={d.title} onClose={() => store.closeDialog()}>
+      <form onSubmit={e => { e.preventDefault(); store.dialog = null; store.notify(); d.onApply(vals); }}>
+        {d.fields.map(f => (
+          <label key={f.key} className="field"><span>{f.label}</span>
+            <input type="range" min={f.min} max={f.max} step={f.step} value={vals[f.key]} aria-label={f.label} onChange={e => setVals({ ...vals, [f.key]: +e.target.value })} />
+            <input type="number" min={f.min} max={f.max} step={f.step} value={vals[f.key]} aria-label={`${f.label} value`} data-testid={`param-${f.key}`} onChange={e => setVals({ ...vals, [f.key]: +e.target.value })} style={{ width: 70 }} />
+          </label>
+        ))}
+        <p className="muted small">{d.note ?? 'Applied to the active raster layer (inside the selection if there is one). One undo step.'}</p>
+        <div className="row end"><button type="button" className="btn" onClick={() => store.closeDialog()}>Cancel</button><button className="btn primary" data-testid="param-ok">Apply</button></div>
+      </form>
+    </Modal>
+  );
+}
+
 function Dialogs() {
   const st = useStore();
   const d: Dialog | null = st.dialog;
@@ -373,6 +416,7 @@ function Dialogs() {
   switch (d.kind) {
     case 'new': return <NewDialog />;
     case 'scale': return <ScaleDialog />;
+    case 'params': return <ParamsDialog d={d} />;
     case 'batch': return <BatchDialog />;
     case 'nameAction': return <NameActionDialog />;
     case 'export': return <ExportDialog fmt={d.fmt} />;

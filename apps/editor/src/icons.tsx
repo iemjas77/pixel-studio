@@ -4,6 +4,7 @@ import type { ToolId } from './store';
 const P = (d: ReactNode) => <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
 
 export const ToolIcons: Record<ToolId, ReactNode> = {
+  gradient: P(<><rect x="4" y="5" width="16" height="14" rx="1.5" /><path d="M8 5v14M12 5v14M16 5v14" strokeOpacity=".45" /></>),
   move: P(<><path d="M12 3v18M3 12h18" /><path d="M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3" /></>),
   marquee: P(<rect x="4" y="5" width="16" height="14" rx="1" strokeDasharray="3 2.5" />),
   brush: P(<><path d="M4 20c3 0 5-1 5-3.5C9 15 8 14 6.5 14S4 15.5 4 17.5V20z" /><path d="M9.5 14.5L19 5a1.8 1.8 0 012.5 2.5L12 17" transform="translate(-1 0)" /></>),

@@ -1,5 +1,6 @@
 import {
   TileStore, TileWriter, StrokeSession, DEFAULT_BRUSH, BLEND_MODES, fillRect, clearRect, applyMaskToPixels,
+  mapPixels, invert, desaturate, brightnessContrast, levels, curves, hueSaturation, addNoise, convolveFilter, gradientFill, MAX_TRANSFORM_PIXELS,
   transformStore, exactTransform, scaleAbout, replaceStoreContent, type Clip, type TileDiff, type BrushParams,
 } from '@ps/raster';
 import {
@@ -363,6 +364,108 @@ def<{ id: string }>({
       offset: { ...l.offset }, mask: l.mask, unknown: l.unknown, pixels,
     };
     ctx.tx.apply({ op: 'layer.replace', id: p.id, layer: r });
+  },
+});
+
+// ----- adjustments, filters, gradient (destructive, reference engine) -----
+const ADJ = ['invert', 'desaturate', 'brightnessContrast', 'levels', 'hueSaturation', 'curves'] as const;
+const adjSchema = S.obj({
+  layerId, kind: S.enum(ADJ), brightness: S.opt(S.num(-100, 100)), contrast: S.opt(S.num(-100, 100)),
+  inBlack: S.opt(S.int(0, 254)), inWhite: S.opt(S.int(1, 255)), gamma: S.opt(S.num(0.1, 10)), outBlack: S.opt(S.int(0, 255)), outWhite: S.opt(S.int(0, 255)),
+  hue: S.opt(S.num(-180, 180)), saturation: S.opt(S.num(-100, 100)), lightness: S.opt(S.num(-100, 100)),
+  points: S.opt(S.arr(S.arr(S.num(0, 255), 2, 2), 16, 2)),
+});
+def<any>({
+  type: 'adjust.apply', version: 1,
+  label: (p: any) => ({ invert: 'Invert', desaturate: 'Desaturate', brightnessContrast: 'Brightness/Contrast', levels: 'Levels', hueSaturation: 'Hue/Saturation', curves: 'Curves' } as Record<string, string>)[p.kind],
+  schema: adjSchema,
+  check(doc, p) {
+    ensureEditablePixels(doc, p.layerId, 'pixels');
+    if (p.kind === 'levels' && (p.inBlack ?? 0) >= (p.inWhite ?? 255)) throw blocked('Levels: input black must be below input white.');
+    if (p.kind === 'curves') {
+      const xs = (p.points ?? [[0, 0], [255, 255]]).map((q: number[]) => q[0]);
+      if (xs.some((x: number, i: number) => i > 0 && x <= xs[i - 1])) throw blocked('Curves: point x-values must be strictly increasing.');
+    }
+  },
+  execute(ctx, p) {
+    const l = getLayer(ctx.doc, p.layerId) as RasterLayer;
+    const fn = p.kind === 'invert' ? invert : p.kind === 'desaturate' ? desaturate
+      : p.kind === 'brightnessContrast' ? brightnessContrast(p.brightness ?? 0, p.contrast ?? 0)
+      : p.kind === 'levels' ? levels({ inBlack: p.inBlack ?? 0, inWhite: p.inWhite ?? 255, gamma: p.gamma ?? 1, outBlack: p.outBlack ?? 0, outWhite: p.outWhite ?? 255 })
+      : p.kind === 'hueSaturation' ? hueSaturation(p.hue ?? 0, p.saturation ?? 0, p.lightness ?? 0)
+      : curves((p.points ?? [[0, 0], [255, 255]]) as [number, number][]);
+    const scratch = l.pixels.clone(); const w = new TileWriter(scratch);
+    mapPixels(w, fn, selectionClip(ctx.doc.selection), absoluteOffset(ctx.doc, p.layerId));
+    commitDiff(ctx, p.layerId, 'pixels', w.finish());
+  },
+});
+
+def<any>({
+  type: 'filter.apply', version: 1,
+  label: (p: any) => ({ blur: 'Gaussian Blur', sharpen: 'Sharpen', noise: 'Add Noise' } as Record<string, string>)[p.kind],
+  schema: S.obj({ layerId, kind: S.enum(['blur', 'sharpen', 'noise']), radius: S.opt(S.num(0.5, 100)), amount: S.opt(S.num(0, 100)), mono: S.opt(S.bool()), seed: S.opt(S.int(0, 2 ** 31 - 1)) }),
+  check(doc, p) { ensureEditablePixels(doc, p.layerId, 'pixels'); if (p.kind === 'sharpen' && (p.amount ?? 1) > 5) throw blocked('Sharpen amount is limited to 5.'); },
+  execute(ctx, p) {
+    const l = getLayer(ctx.doc, p.layerId) as RasterLayer;
+    const scratch = l.pixels.clone(); const w = new TileWriter(scratch);
+    const clip = selectionClip(ctx.doc.selection), off = absoluteOffset(ctx.doc, p.layerId);
+    if (p.kind === 'noise') mapPixels(w, addNoise(p.amount ?? 10, p.seed ?? 1, p.mono ?? false), clip, off);
+    else convolveFilter(w, p.kind, p.radius ?? 2, p.kind === 'sharpen' ? (p.amount ?? 1) : 0, clip, off);
+    commitDiff(ctx, p.layerId, 'pixels', w.finish());
+  },
+});
+
+def<any>({
+  type: 'gradient.fill', version: 1, label: () => 'Gradient',
+  schema: S.obj({ layerId, plane: planeSchema, kind: S.enum(['linear', 'radial']), from: S.arr(S.num(-1e6, 1e6), 2, 2), to: S.arr(S.num(-1e6, 1e6), 2, 2), c0: color4, c1: color4 }),
+  check(doc, p) { ensureEditablePixels(doc, p.layerId, p.plane); },
+  execute(ctx, p) {
+    const l = getLayer(ctx.doc, p.layerId);
+    const off = absoluteOffset(ctx.doc, p.layerId), sel = ctx.doc.selection, c = ctx.doc.canvas;
+    const r = sel ?? { x: 0, y: 0, w: c.width, h: c.height };
+    const scratch = storeOf(l, p.plane).clone(); const w = new TileWriter(scratch);
+    gradientFill(w, { x: r.x - off.x, y: r.y - off.y, w: r.w, h: r.h }, [p.from[0] - off.x, p.from[1] - off.y], [p.to[0] - off.x, p.to[1] - off.y], p.c0, p.c1, p.kind, null, off);
+    commitDiff(ctx, p.layerId, p.plane, w.finish());
+  },
+});
+
+// ----- canvas / image geometry -----
+def<{ x: number; y: number; w: number; h: number }>({
+  type: 'canvas.crop', version: 1, label: () => 'Crop',
+  schema: S.obj({ x: S.int(0, 1e6), y: S.int(0, 1e6), w: S.int(1, 32768), h: S.int(1, 32768) }),
+  check(doc, p) { if (p.x + p.w > doc.canvas.width || p.y + p.h > doc.canvas.height) throw blocked('Crop rectangle must lie inside the canvas.'); },
+  execute(ctx, p) {
+    ctx.tx.apply({ op: 'doc.set', props: { selection: null } });
+    ctx.tx.apply({ op: 'doc.set', props: { canvasSize: { width: p.w, height: p.h } } });
+    for (const l of [...ctx.doc.layers]) if (p.x || p.y) ctx.tx.apply({ op: 'layer.set', id: l.id, props: { offset: { x: l.offset.x - p.x, y: l.offset.y - p.y } } });
+  },
+});
+
+def<{ width: number; height: number }>({
+  type: 'image.resize', version: 1, label: () => 'Image Size',
+  schema: S.obj({ width: S.int(1, 32768), height: S.int(1, 32768) }),
+  check(doc, p) { if (p.width * p.height > 100_000_000) throw blocked('Preview build limit: 100 megapixels.'); void doc; },
+  execute(ctx, p) {
+    const sx = p.width / ctx.doc.canvas.width, sy = p.height / ctx.doc.canvas.height;
+    const scaleStore = (layerId: string, plane: 'pixels' | 'mask', store: TileStore) => {
+      const next = transformStore(store, scaleAbout(sx, sy, 0, 0), 'bilinear', store.fill === 0 ? undefined : undefined);
+      commitDiff(ctx, layerId, plane, replaceStoreContent(store.clone(), next));
+    };
+    const walk = (layers: Layer[]) => {
+      for (const l of layers) {
+        if (l.kind === 'opaque') continue;
+        const off = { x: Math.round(l.offset.x * sx), y: Math.round(l.offset.y * sy) };
+        if (l.kind === 'raster') scaleStore(l.id, 'pixels', l.pixels);
+        if (l.mask) scaleStore(l.id, 'mask', l.mask.tiles);
+        const props: any = { offset: off };
+        if (l.kind === 'text') props.text = { ...l.text, fontSize: Math.max(1, Math.min(4096, l.text.fontSize * (sx + sy) / 2)), tracking: l.text.tracking * sx, boxWidth: l.text.boxWidth ? Math.min(100000, Math.max(1, l.text.boxWidth * sx)) : null };
+        ctx.tx.apply({ op: 'layer.set', id: l.id, props });
+        if (l.kind === 'group') walk(l.children);
+      }
+    };
+    walk([...ctx.doc.layers]);
+    ctx.tx.apply({ op: 'doc.set', props: { selection: null } });
+    ctx.tx.apply({ op: 'doc.set', props: { canvasSize: { width: p.width, height: p.height } } });
   },
 });
 

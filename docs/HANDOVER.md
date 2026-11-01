@@ -13,8 +13,8 @@ npm install                       # also downloads the Electron binary (postinst
 npm run build                     # vite (editor) + esbuild (Electron main/preload)
 npm start                         # build + launch the app (needs a display)
 npm run typecheck
-npm test                          # 75 unit/integration tests (plain Node, no DOM/Electron)
-npm run test:e2e                  # build + 12 Electron E2E tests (incl. GPU golden, actions/batch) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
+npm test                          # 89 unit/integration tests (plain Node, no DOM/Electron)
+npm run test:e2e                  # build + 13 Electron E2E tests (incl. GPU golden, actions/batch) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
 npm run licenses                  # licence summary of installed packages
 ```
 Notes: if `node_modules/electron/path.txt` is missing, run `node node_modules/electron/install.js`.
@@ -33,7 +33,8 @@ keeps `sandbox: true` for the renderer in normal runs). The E2E build honours th
 | M3 GPU composition + colour reference | ✅ done for stated scope (no ICC; that is M7) | `tests/e2e/gpu.test.ts`: 50 golden scenes ≤ 1/255 vs CPU reference; context-loss recovery; leak check |
 | M4 Actions, batch, initial interchange | ✅ done for stated scope | `tests/unit/automation.test.ts`, `tests/unit/interchange.test.ts`, `tests/e2e/actions.test.ts`; spec `docs/06-actions-and-batch.md` |
 | M5 tested preview + handover | ✅ for the Linux/Xvfb preview (all 4 scenarios automated, perf recorded) – **not** Windows-verified | §5–6 |
-| M6 … M10 | not started | – |
+| M9 advanced production editing | **partial subset only** (see matrix) | `tests/unit/adjust.test.ts`, `tests/e2e/production.test.ts` |
+| M6, M7, M8, M10 | **not started** | – |
 
 Acceptance E2E scenarios from the master prompt: **1 ✅, 2 ✅, 4 ✅** automated; **3 ✅** (all four master-prompt scenarios automated).
 M5/M10 are *not* met: no Windows run, no accessibility audit, no designer sign-off.
@@ -76,7 +77,11 @@ Dependency direction: `raster-ref ← document ← commands ← codecs/editor`; 
 | Linear-light blending option (`canvas.blendSpace`, format 1.1, undoable command, View menu) | Implemented | CPU + GPU; resampling/brush/fill remain on encoded sRGB |
 | ICC, CMYK, soft proof, 16-bit/float | Planned (M6/M7) | |
 | Rulers, guides (model only), dockable panels, workspace presets, shortcut editor, Photoshop-like preset | Planned (M10) | |
-| Crop/resample, lasso/wand, feather, gradients, patterns, clone/heal, curves/levels, filters, effects, clipping, adjustment layers | Planned (M9) | |
+| Destructive adjustments: invert, desaturate, brightness/contrast, levels, hue/saturation, curves (monotone spline, 3-point UI) | Implemented (reference) | encoded sRGB 8-bit, RGB-joint levels/curves (no per-channel UI), selection-clipped, undoable; **not** non-destructive |
+| Filters: Gaussian blur, unsharp-mask sharpen, add noise (position-hashed, deterministic) | Implemented (reference) | premultiplied-correct blur; whole-layer limit 48 Mpx; no preview in dialogs |
+| Gradient tool (linear/radial, fg→bg, clipped to selection, works on masks) | Implemented | 2 colour stops only |
+| Crop to selection, image resize (bilinear, all layers + masks + text size) | Implemented | no rotate-by-angle, no bicubic/Lanczos, no canvas-size-with-anchor |
+| Lasso/polygon/wand/colour-range, add/subtract/feather selection, patterns, clone/heal/retouch, perspective/affine UI, pressure presets, non-destructive adjustment layers, layer effects, clipping masks, embedded documents | **Planned (M9, not started)** | needs selection-mask model first |
 | PSD/PSB (any form) | Planned (M8) – **no primary-source research done yet** | |
 
 ## 5. What was verified (and how)
@@ -141,6 +146,10 @@ brush, fill, resampling, masks, opacity = encoded sRGB / linear coverage; displa
 See `docs/03-dependency-license-assessment.md` and `npm run licenses`.
 
 ## 9. Exact next steps
+3. **M6** (not started): disk-backed tile eviction/spill + memory budgets in `TileStore`/`TileWriter`, worker-based processing with cancellation tokens, then a Rust engine behind the existing `@ps/raster` function signatures verified against `tests/unit` golden outputs (cargo 1.97 exists in this environment; a Windows N-API build cannot be verified here).
+3b. **M7** (not started): LittleCMS (WASM or native) for assign/convert/intents/BPC/soft-proof/CMYK with reference-value tests; HarfBuzz WASM + bidi with Arabic/Indic/CJK/combining-mark tests (first install real test fonts).
+3c. **M8** (not started): read Adobe's public PSD/PSB specification, write the feature matrix, then a bounded parser with fixtures + psd-tools/Pillow validation.
+3d. **M10** (not started): Windows run + `electron-builder` NSIS packaging (needs a Windows host), accessibility audit, designer acceptance.
 3. Run the app on Windows 10/11 and fix platform issues (paths, fonts, sandbox flags) before calling M2 fully accepted.
 4. Re-measure the GPU path on a real GPU; add persistent layer textures + direct canvas presentation before making it default; add a mip pyramid for zoomed-out views.
 5. Research PSD/PSB from Adobe's public file-format documentation and fill the format matrix before writing any parser (M8).

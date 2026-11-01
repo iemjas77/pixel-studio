@@ -1,7 +1,7 @@
 import { isBlendMode, type TileChanges, type BlendMode } from '@ps/raster';
 import { findLayer, walkLayers, containsLayer, countLayers, groupDepth } from './tree';
 import {
-  MAX_GROUP_DEPTH, MAX_LAYERS, type Guide, type Layer, type Lock, type MaskState, type PsDocument, type Selection, type TextData,
+  MAX_CANVAS_PIXELS, MAX_CANVAS_SIDE, MAX_GROUP_DEPTH, MAX_LAYERS, type Guide, type Layer, type Lock, type MaskState, type PsDocument, type Selection, type TextData,
 } from './types';
 
 /**
@@ -12,7 +12,7 @@ export interface LayerProps {
   name?: string; visible?: boolean; lock?: Lock; opacity?: number; blendMode?: BlendMode;
   offset?: { x: number; y: number }; text?: TextData; mask?: MaskState | null; expanded?: boolean;
 }
-export interface DocProps { name?: string; selection?: Selection | null; guides?: Guide[]; blendSpace?: 'srgb' | 'linear' }
+export interface DocProps { name?: string; selection?: Selection | null; guides?: Guide[]; blendSpace?: 'srgb' | 'linear'; canvasSize?: { width: number; height: number } }
 
 export type Op =
   | { op: 'layer.insert'; parentId: string | null; index: number; layer: Layer }
@@ -163,6 +163,11 @@ export function applyOp(doc: PsDocument, op: Op): Op {
           if (s.kind !== 'rect' || ![s.x, s.y, s.w, s.h].every(Number.isInteger) || s.w <= 0 || s.h <= 0) throw new OpError('invalid selection');
         }
         inv.selection = doc.selection; doc.selection = s ?? null;
+      }
+      if ('canvasSize' in p) {
+        const c = p.canvasSize!;
+        if (!c || !Number.isInteger(c.width) || !Number.isInteger(c.height) || c.width < 1 || c.height < 1 || c.width > MAX_CANVAS_SIDE || c.height > MAX_CANVAS_SIDE || c.width * c.height > MAX_CANVAS_PIXELS) throw new OpError('invalid canvas size');
+        inv.canvasSize = { width: doc.canvas.width, height: doc.canvas.height }; doc.canvas.width = c.width; doc.canvas.height = c.height;
       }
       if ('blendSpace' in p) {
         if (p.blendSpace !== 'srgb' && p.blendSpace !== 'linear') throw new OpError('invalid blendSpace');

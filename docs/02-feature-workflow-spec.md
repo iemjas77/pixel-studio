@@ -102,3 +102,8 @@ default map, centralised in `apps/editor/src/shortcuts.ts` so it can become edit
 2. Import PNG → layers → mask → text → export PNG → decode → expected pixels.
 3. Record Action → replay → batch (M4).
 4. Open corrupt/unsupported file → clear error → existing document unchanged.
+
+## 7. Added after M4 (status = see HANDOVER matrix)
+Adjust menu (invert, desaturate, brightness/contrast, levels, hue/saturation, 3-point curves), Filter menu (Gaussian blur, sharpen, noise),
+Gradient tool (G), Image menu (crop to selection, image size), Actions panel (record/play/save/load/batch), flattened TIFF/PSD export,
+View ▸ compositing backend and linear-light blending. All run as undoable registry commands and are recordable in Actions.

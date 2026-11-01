@@ -1,10 +1,10 @@
 import { store, type ToolId } from './store';
 
 /** Single default shortcut map ("Pixel Studio" preset). Editable mappings are planned (M10). */
-export const TOOL_KEYS: Record<string, ToolId> = { v: 'move', m: 'marquee', b: 'brush', e: 'eraser', t: 'text', i: 'eyedropper', h: 'hand', z: 'zoom' };
+export const TOOL_KEYS: Record<string, ToolId> = { g: 'gradient', v: 'move', m: 'marquee', b: 'brush', e: 'eraser', t: 'text', i: 'eyedropper', h: 'hand', z: 'zoom' };
 
 export const SHORTCUT_LIST: [string, string][] = [
-  ['B / E / V / M / T / I / H / Z', 'Brush / Eraser / Move / Marquee / Text / Eyedropper / Hand / Zoom'],
+  ['B / E / G / V / M / T / I / H / Z', 'Brush / Eraser / Gradient / Move / Marquee / Text / Eyedropper / Hand / Zoom'],
   ['X  ·  D', 'Swap colours  ·  default colours'],
   ['[  ]', 'Decrease / increase brush size'],
   ['Ctrl+N / O / S / Shift+S / W', 'New / Open / Save / Save As / Close'],
