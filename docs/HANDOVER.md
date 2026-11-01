@@ -14,7 +14,7 @@ npm run build                     # vite (editor) + esbuild (Electron main/prelo
 npm start                         # build + launch the app (needs a display)
 npm run typecheck
 npm test                          # 75 unit/integration tests (plain Node, no DOM/Electron)
-npm run test:e2e                  # build + 11 Electron E2E tests (incl. GPU golden, actions/batch) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
+npm run test:e2e                  # build + 12 Electron E2E tests (incl. GPU golden, actions/batch) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
 npm run licenses                  # licence summary of installed packages
 ```
 Notes: if `node_modules/electron/path.txt` is missing, run `node node_modules/electron/install.js`.
@@ -32,7 +32,8 @@ keeps `sandbox: true` for the renderer in normal runs). The E2E build honours th
 | M2 working workspace + foundational tools | ✅ done for the listed scope | 6 Electron E2E tests + screenshots (§5) |
 | M3 GPU composition + colour reference | ✅ done for stated scope (no ICC; that is M7) | `tests/e2e/gpu.test.ts`: 50 golden scenes ≤ 1/255 vs CPU reference; context-loss recovery; leak check |
 | M4 Actions, batch, initial interchange | ✅ done for stated scope | `tests/unit/automation.test.ts`, `tests/unit/interchange.test.ts`, `tests/e2e/actions.test.ts`; spec `docs/06-actions-and-batch.md` |
-| M5 … M10 | not started | – |
+| M5 tested preview + handover | ✅ for the Linux/Xvfb preview (all 4 scenarios automated, perf recorded) – **not** Windows-verified | §5–6 |
+| M6 … M10 | not started | – |
 
 Acceptance E2E scenarios from the master prompt: **1 ✅, 2 ✅, 4 ✅** automated; **3 ✅** (all four master-prompt scenarios automated).
 M5/M10 are *not* met: no Windows run, no accessibility audit, no designer sign-off.
@@ -71,7 +72,7 @@ Dependency direction: `raster-ref ← document ← commands ← codecs/editor`; 
 | Actions: record, stop, name, save/load (.psaction), replay (undoable, atomic), allow-listed validation | Implemented | absolute coordinates; symbolic layer targets |
 | Batch: folder in/out, naming template, overwrite policy, isolated docs, bounded concurrency, progress, cancel, per-file report | Implemented | cancel verified in unit test with fake IO (not clicked in E2E); runs on renderer main thread |
 | Flattened TIFF + flattened PSD (composite only) export | Implemented | validated by Pillow + ImageMagick; **not** layered, no ICC |
-| WebGL2 per-layer compositor (12 blend modes, masks, opacity, offsets, isolated groups, RGBA32F premultiplied accumulation), CPU fallback, context-loss recovery, resource cleanup | Implemented | tiles ≤ 4096² per call; layer pixels uploaded per region (no persistent GPU texture cache yet); GPU readback per tile |
+| WebGL2 per-layer compositor (12 blend modes, masks, opacity, offsets, isolated groups, RGBA32F premultiplied accumulation), CPU fallback, context-loss recovery, resource cleanup | Implemented, **opt-in / experimental** (slower than CPU in measurements) | tiles ≤ 4096² per call; layer pixels uploaded per region (no persistent GPU texture cache yet); GPU readback per tile |
 | Linear-light blending option (`canvas.blendSpace`, format 1.1, undoable command, View menu) | Implemented | CPU + GPU; resampling/brush/fill remain on encoded sRGB |
 | ICC, CMYK, soft proof, 16-bit/float | Planned (M6/M7) | |
 | Rulers, guides (model only), dockable panels, workspace presets, shortcut editor, Photoshop-like preset | Planned (M10) | |
@@ -106,6 +107,15 @@ Screenshots: `e2e-artifacts/*.png` (git-ignored; regenerate with the E2E command
 | 12 Mpx white doc: create+fill / flatten / preview / save / parse | 0.44 s / 0.8 s / 1.0 s / 0.6 s / 0.26 s | 102 → 190 MB |
 | 48 Mpx white doc: create+fill / flatten / preview / save / parse | 1.2 s / 1.8 s / 2.6 s / 2.0 s / 0.8 s | 312 → 590 MB |
 | Undo of a stroke | < 1 ms | |
+**In-app (Electron under Xvfb, software GL — `tests/e2e/perf.test.ts` → `e2e-artifacts/perf.json`, 2-layer white document, fit-zoom first paint of the visible tiles):**
+| Doc | create | first paint CPU | first paint GPU (SwiftShader) | brush event p50/p95/max |
+|---|---|---|---|---|
+| 2000×1500 | 70 ms | 172 ms (48 tiles) | 1045 ms | 0.3 / 0.6 / 3.7 ms |
+| 4000×3000 | 186 ms | 1245 ms (192 tiles) | 1921 ms | 0.3 / 0.5 / 2.1 ms |
+| 8000×6000 | 1302 ms | 3038 ms (768 tiles) | 8573 ms | 0.3 / 0.7 / 1.1 ms |
+**Finding:** with per-tile upload + readback on software GL the GPU path is slower than the CPU reference, so **CPU is the default**; the GPU
+compositor is correct (golden tests) but its speed benefit is unproven and needs a hardware-GPU run plus persistent layer textures and direct-to-canvas
+presentation. First paint of large documents at fit zoom is dominated by compositing every tile at 1:1 (no mip pyramid) – a known weakness.
 Whole pixel data stays in memory (no eviction/spill); a 100 Mpx RGBA layer ≈ 400 MB per layer. No interactive-frame-rate
 measurement inside Electron has been taken yet.
 
@@ -132,5 +142,5 @@ See `docs/03-dependency-license-assessment.md` and `npm run licenses`.
 
 ## 9. Exact next steps
 3. Run the app on Windows 10/11 and fix platform issues (paths, fonts, sandbox flags) before calling M2 fully accepted.
-4. Measure in-app brush latency and compositing frame time on 20–50 Mpx documents; decide on worker/OffscreenCanvas compositing.
+4. Re-measure the GPU path on a real GPU; add persistent layer textures + direct canvas presentation before making it default; add a mip pyramid for zoomed-out views.
 5. Research PSD/PSB from Adobe's public file-format documentation and fill the format matrix before writing any parser (M8).

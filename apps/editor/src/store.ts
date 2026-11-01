@@ -127,7 +127,8 @@ export class EditorStore {
 
   /** GPU compositing backend (null when WebGL2 is unavailable); user may force CPU. */
   gpu: GpuCompositor | null = (() => { try { const g = new GpuCompositor(); return g.available ? g : null; } catch { return null; } })();
-  gpuMode: 'auto' | 'cpu' = 'auto';
+  /** CPU reference is the default: measured faster than the (software-GL) GPU path here; GPU is opt-in via View menu. */
+  gpuMode: 'auto' | 'cpu' = 'cpu';
   get backendLabel() { return this.gpuMode === 'auto' && this.gpu?.available ? (this.gpu.lastBackend === 'gpu' ? 'GPU' : 'GPU (idle)') : this.gpu && this.gpuMode === 'auto' ? 'CPU (GPU lost)' : 'CPU'; }
   setGpuMode(m: 'auto' | 'cpu') {
     this.gpuMode = m;

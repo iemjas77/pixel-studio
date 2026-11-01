@@ -104,6 +104,7 @@ describe('M3: GPU compositor vs CPU reference', () => {
     const { page } = L;
     const r = await page.evaluate(async () => {
       const st = (window as any).__ps.store;
+      st.setGpuMode('auto');
       st.newDocument({ name: 't', width: 300, height: 200, ppi: 72, background: 'white' });
       st.exec({ type: 'layer.add', params: {} });
       st.exec({ type: 'edit.fill', params: { layerId: st.active.activeLayerId, plane: 'pixels', color: [128, 128, 128, 255], region: 'layer' } });
