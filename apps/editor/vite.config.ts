@@ -11,6 +11,7 @@ export default defineConfig({
     '@ps/document': r('../../packages/document/src/index.ts'),
     '@ps/commands': r('../../packages/commands/src/index.ts'),
     '@ps/codecs': r('../../packages/codecs/src/index.ts'),
+    '@ps/automation': r('../../packages/automation/src/index.ts'),
   } },
   build: { outDir: r('./dist'), emptyOutDir: true, sourcemap: true, target: 'chrome130' },
 });

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { store, useStore, type Dialog, type RGB, type ToolId } from './store';
 import { Viewport } from './Viewport';
-import { ColorPanel, HistoryPanel, LayersPanel, PropertiesPanel } from './panels';
+import { ActionsPanel, ColorPanel, HistoryPanel, LayersPanel, PropertiesPanel } from './panels';
+import { runBatch, type BatchReport } from '@ps/automation';
+import { makeBatchIO, type BatchFormat } from './batch';
 import { Close, Logo, ToolIcons } from './icons';
 import { SHORTCUT_LIST, installShortcuts } from './shortcuts';
 
@@ -24,6 +26,9 @@ function useMenus(): { name: string; items: Item[] }[] {
       { label: 'Export flattened PNG…', disabled: !has, run: () => void st.exportAs('png') },
       { label: 'Export flattened JPEG…', disabled: !has, run: () => { st.dialog = { kind: 'export', fmt: 'jpg' }; st.notify(); } },
       { label: 'Export flattened WebP…', disabled: !has, run: () => { st.dialog = { kind: 'export', fmt: 'webp' }; st.notify(); } },
+      { label: 'Export flattened TIFF…', disabled: !has, run: () => void st.exportAs('tif') },
+      { label: 'Export flattened PSD (composite only)…', disabled: !has, run: () => void st.exportAs('psd') },
+      { label: 'Batch…', disabled: !st.actions.length, run: () => { st.dialog = { kind: 'batch' }; st.notify(); } },
       { label: '', sep: true },
       { label: 'Close document', shortcut: 'Ctrl+W', disabled: !has, run: () => void st.requestCloseSession(st.activeIndex) },
     ] },
@@ -291,6 +296,76 @@ function ExportDialog({ fmt }: { fmt: 'jpg' | 'webp' }) {
   );
 }
 
+function NameActionDialog() {
+  const st = store;
+  const [name, setName] = useState(`Action ${st.actions.length + 1}`);
+  return (
+    <Modal title="Save recorded action" onClose={() => st.closeDialog()}>
+      <form onSubmit={e => { e.preventDefault(); st.dialog = null; st.stopRecording(name.trim() || 'Untitled action'); }}>
+        <label className="field"><span>Name</span><input value={name} onChange={e => setName(e.target.value)} aria-label="Action name" data-testid="action-name" /></label>
+        <p className="muted small">Steps record allow-listed commands with symbolic layer targets; pixel coordinates are absolute.</p>
+        <div className="row end">
+          <button type="button" className="btn" onClick={() => { st.dialog = null; st.stopRecording(null); }}>Discard</button>
+          <button type="button" className="btn" onClick={() => st.closeDialog()}>Keep recording</button>
+          <button className="btn primary" data-testid="action-save">Save</button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function BatchDialog() {
+  const st = store;
+  const [ai, setAi] = useState(st.selectedAction);
+  const [inp, setInp] = useState<{ dir: string; files: { name: string }[] } | null>(null);
+  const [out, setOut] = useState<string | null>(null);
+  const [fmt, setFmt] = useState<BatchFormat>('png');
+  const [template, setTemplate] = useState('{name}');
+  const [policy, setPolicy] = useState<'skip' | 'overwrite' | 'rename'>('rename');
+  const [conc, setConc] = useState(2);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [report, setReport] = useState<BatchReport | null>(null);
+  const sig = useRef({ aborted: false });
+  const action = st.actions[ai];
+  const ready = !!(action && inp && inp.files.length && out && /^[^\\/:*?"<>|]*$/.test(template) && template.length > 0);
+  const run = async () => {
+    if (!ready || !action || !inp || !out) return;
+    sig.current = { aborted: false }; setRunning(true); setReport(null); setProgress({ done: 0, total: inp.files.length });
+    const io = makeBatchIO({ inDir: inp.dir, outDir: out, format: fmt, quality: 0.92, template });
+    const rep = await runBatch(inp.files.map((f, i) => ({ id: `j${i}`, name: f.name })), io, {
+      action, overwrite: policy, concurrency: conc, signal: sig.current, onProgress: (done, total) => setProgress({ done, total }),
+    });
+    setReport(rep); setRunning(false);
+  };
+  return (
+    <Modal title="Batch" wide onClose={() => { if (!running) st.closeDialog(); }}>
+      <div className="grid2">
+        <label className="field"><span>Action</span><select value={ai} onChange={e => setAi(+e.target.value)} aria-label="Batch action">{st.actions.map((a, i) => <option key={i} value={i}>{a.name}</option>)}</select></label>
+        <label className="field"><span>Output format</span><select value={fmt} onChange={e => setFmt(e.target.value as BatchFormat)} aria-label="Output format">
+          <option value="pstudio">.pstudio (layers kept)</option><option value="png">PNG (flattened)</option><option value="jpg">JPEG (flattened)</option><option value="webp">WebP (flattened)</option><option value="tif">TIFF (flattened)</option><option value="psd">PSD (flattened composite)</option></select></label>
+        <div className="field"><span>Input folder</span><button className="btn small" disabled={running} data-testid="batch-in" onClick={async () => { const r = await window.pixelStudio?.pickFolder('in'); if (r) setInp(r); }}>Choose…</button></div>
+        <div className="field"><span>Output folder</span><button className="btn small" disabled={running} data-testid="batch-out" onClick={async () => { const r = await window.pixelStudio?.pickFolder('out'); if (r) setOut(r.dir); }}>Choose…</button></div>
+        <label className="field"><span>Naming</span><input value={template} onChange={e => setTemplate(e.target.value)} aria-label="Output name template" /></label>
+        <label className="field"><span>If file exists</span><select value={policy} onChange={e => setPolicy(e.target.value as typeof policy)} aria-label="Overwrite policy"><option value="rename">Rename (name-1)</option><option value="skip">Skip</option><option value="overwrite">Overwrite</option></select></label>
+        <label className="field"><span>Parallel jobs</span><input type="number" min={1} max={4} value={conc} onChange={e => setConc(Math.max(1, Math.min(4, +e.target.value || 1)))} aria-label="Parallel jobs" /></label>
+      </div>
+      <p className="muted small" data-testid="batch-summary">{inp ? `${inp.files.length} supported file(s) in ${inp.dir}` : 'No input folder chosen.'} · {out ? `→ ${out}` : 'No output folder chosen.'} · Name template uses {'{name}'}. Each file runs in its own isolated document; the open documents are never touched.</p>
+      {progress && <progress value={progress.done} max={progress.total} aria-label="Batch progress" />}
+      {report && (
+        <div data-testid="batch-report">
+          <p><b>{report.cancelledRun ? 'Cancelled' : 'Finished'}:</b> {report.ok} ok · {report.failed} failed · {report.skipped} skipped · {report.cancelled} cancelled</p>
+          <ul className="recover">{report.results.map(r => <li key={r.job.id}><span>{r.job.name} <span className="muted small">→ {r.status}{r.output ? ` (${r.output})` : ''}{r.error ? `: ${r.error}` : ''}</span></span></li>)}</ul>
+        </div>
+      )}
+      <div className="row end">
+        {running ? <button className="btn" onClick={() => { sig.current.aborted = true; }} data-testid="batch-cancel">Cancel batch</button>
+          : <><button className="btn" onClick={() => st.closeDialog()}>Close</button><button className="btn primary" disabled={!ready} onClick={() => void run()} data-testid="batch-run">Run</button></>}
+      </div>
+    </Modal>
+  );
+}
+
 function Dialogs() {
   const st = useStore();
   const d: Dialog | null = st.dialog;
@@ -298,6 +373,8 @@ function Dialogs() {
   switch (d.kind) {
     case 'new': return <NewDialog />;
     case 'scale': return <ScaleDialog />;
+    case 'batch': return <BatchDialog />;
+    case 'nameAction': return <NameActionDialog />;
     case 'export': return <ExportDialog fmt={d.fmt} />;
     case 'about': return (
       <Modal title="About Pixel Studio" onClose={() => st.closeDialog()}>
@@ -367,6 +444,7 @@ export function App() {
           <PropertiesPanel />
           <LayersPanel />
           <HistoryPanel />
+          <ActionsPanel />
         </aside>
       </div>
       <StatusBar />

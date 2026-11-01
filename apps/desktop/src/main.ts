@@ -16,6 +16,8 @@ const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** Paths the user explicitly picked in a native dialog during this run (write capability list). */
 const approved = new Set<string>();
+const batchIn = new Set<string>();
+const batchOut = new Set<string>();
 let win: BrowserWindow | null = null;
 let closeApproved = false;
 
@@ -42,7 +44,8 @@ const recoveryDir = () => {
   return d;
 };
 
-const FILTERS: Record<'document' | 'image', Electron.FileFilter[]> = {
+const FILTERS: Record<'document' | 'image' | 'action', Electron.FileFilter[]> = {
+  action: [{ name: 'Pixel Studio Action', extensions: ['psaction', 'json'] }],
   document: [{ name: 'Pixel Studio Document', extensions: ['pstudio'] }, { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }, { name: 'All files', extensions: ['*'] }],
   image: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }],
 };
@@ -50,7 +53,7 @@ const FILTERS: Record<'document' | 'image', Electron.FileFilter[]> = {
 function registerIpc() {
   ipcMain.handle('ps:open', async (e, kind: unknown) => {
     trusted(e);
-    if (kind !== 'document' && kind !== 'image') throw new Error('bad kind');
+    if (kind !== 'document' && kind !== 'image' && kind !== 'action') throw new Error('bad kind');
     let file: string | null;
     if (E2E) file = nextScripted();
     else {
@@ -88,11 +91,11 @@ function registerIpc() {
     trusted(e);
     const bytes = assertBytes(arg.bytes, 'export');
     const ext = arg.ext;
-    if (ext !== 'png' && ext !== 'jpg' && ext !== 'webp') throw new Error('bad extension');
+    if (!['png', 'jpg', 'webp', 'tif', 'psd', 'psaction'].includes(ext as string)) throw new Error('bad extension');
     let target: string | null;
     if (E2E) target = nextScripted();
     else {
-      const r = await dialog.showSaveDialog(win!, { defaultPath: str(arg.suggestedName, 256), filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+      const r = await dialog.showSaveDialog(win!, { defaultPath: str(arg.suggestedName, 256), filters: [{ name: (ext as string).toUpperCase(), extensions: [ext as string] }] });
       target = r.canceled || !r.filePath ? null : r.filePath;
     }
     if (!target) return null;
@@ -131,6 +134,57 @@ function registerIpc() {
     if (!ID_RE.test(s)) throw new Error('bad id');
     for (const ext of ['pstudio', 'json']) { try { fs.unlinkSync(path.join(recoveryDir(), `${s}.${ext}`)); } catch { /* absent */ } }
     return true;
+  });
+  // ---- batch folders: read only inside an input folder the user picked, write only inside an output folder the user picked ----
+  const BATCH_EXT = /\.(png|jpe?g|webp|gif|bmp|pstudio)$/i;
+  const safeName = (n: unknown) => {
+    const v = str(n, 255);
+    if (v !== path.basename(v) || v.startsWith('.') || /[\\/:*?"<>|\0]/.test(v)) throw new Error('unsafe file name');
+    return v;
+  };
+  ipcMain.handle('ps:pick-folder', async (e, purpose: unknown) => {
+    trusted(e);
+    if (purpose !== 'in' && purpose !== 'out') throw new Error('bad purpose');
+    let dir: string | null;
+    if (E2E) dir = nextScripted();
+    else {
+      const r = await dialog.showOpenDialog(win!, { properties: ['openDirectory', ...(purpose === 'out' ? (['createDirectory'] as const) : [])] });
+      dir = r.canceled ? null : r.filePaths[0];
+    }
+    if (!dir) return null;
+    if (purpose === 'out') { batchOut.add(dir); return { dir, files: [] }; }
+    batchIn.add(dir);
+    const files = fs.readdirSync(dir, { withFileTypes: true }).filter(d => d.isFile() && BATCH_EXT.test(d.name) && !d.name.startsWith('.'))
+      .slice(0, 5000).map(d => ({ name: d.name, size: fs.statSync(path.join(dir!, d.name)).size })).sort((a, b) => a.name.localeCompare(b.name));
+    return { dir, files };
+  });
+  ipcMain.handle('ps:batch-read', (e, a: { dir: unknown; name: unknown }) => {
+    trusted(e);
+    const dir = str(a.dir, 1024); const name = safeName(a.name);
+    if (!batchIn.has(dir) || !BATCH_EXT.test(name)) throw new Error('input folder not approved');
+    const f = path.join(dir, name);
+    const st = fs.statSync(f);
+    if (!st.isFile() || st.size > MAX_OPEN_BYTES) throw new Error('input file not readable or too large');
+    return new Uint8Array(fs.readFileSync(f));
+  });
+  ipcMain.handle('ps:batch-write', (e, a: { dir: unknown; name: unknown; bytes: unknown; policy: unknown }) => {
+    trusted(e);
+    const dir = str(a.dir, 1024); let name = safeName(a.name);
+    const bytes = assertBytes(a.bytes, 'batch output');
+    if (!batchOut.has(dir)) throw new Error('output folder not approved');
+    if (a.policy !== 'skip' && a.policy !== 'overwrite' && a.policy !== 'rename') throw new Error('bad policy');
+    let target = path.join(dir, name);
+    if (fs.existsSync(target)) {
+      if (a.policy === 'skip') return { name, skipped: true };
+      if (a.policy === 'rename') {
+        const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+        let i = 1;
+        while (fs.existsSync(path.join(dir, `${stem}-${i}${ext}`))) i++;
+        name = `${stem}-${i}${ext}`; target = path.join(dir, name);
+      }
+    }
+    atomicWriteFile(target, bytes);
+    return { name, skipped: false };
   });
   ipcMain.handle('ps:set-title', (e, title: unknown) => { trusted(e); win?.setTitle(str(title, 300)); return true; });
   ipcMain.handle('ps:close-approved', (e) => { trusted(e); closeApproved = true; win?.close(); return true; });

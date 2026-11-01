@@ -13,8 +13,8 @@ npm install                       # also downloads the Electron binary (postinst
 npm run build                     # vite (editor) + esbuild (Electron main/preload)
 npm start                         # build + launch the app (needs a display)
 npm run typecheck
-npm test                          # 60 unit/integration tests (plain Node, no DOM/Electron)
-npm run test:e2e                  # build + 9 Electron E2E tests (incl. GPU golden) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
+npm test                          # 75 unit/integration tests (plain Node, no DOM/Electron)
+npm run test:e2e                  # build + 11 Electron E2E tests (incl. GPU golden, actions/batch) under Xvfb (xvfb-run -a); screenshots → e2e-artifacts/
 npm run licenses                  # licence summary of installed packages
 ```
 Notes: if `node_modules/electron/path.txt` is missing, run `node node_modules/electron/install.js`.
@@ -31,10 +31,10 @@ keeps `sandbox: true` for the renderer in normal runs). The E2E build honours th
 | M1 document/commands/tiles/native roundtrip | ✅ done | 57 unit tests (§5) |
 | M2 working workspace + foundational tools | ✅ done for the listed scope | 6 Electron E2E tests + screenshots (§5) |
 | M3 GPU composition + colour reference | ✅ done for stated scope (no ICC; that is M7) | `tests/e2e/gpu.test.ts`: 50 golden scenes ≤ 1/255 vs CPU reference; context-loss recovery; leak check |
-| M4 Actions, batch, interchange | not started | – |
+| M4 Actions, batch, initial interchange | ✅ done for stated scope | `tests/unit/automation.test.ts`, `tests/unit/interchange.test.ts`, `tests/e2e/actions.test.ts`; spec `docs/06-actions-and-batch.md` |
 | M5 … M10 | not started | – |
 
-Acceptance E2E scenarios from the master prompt: **1 ✅, 2 ✅, 4 ✅** automated; **3 (Actions/batch) pending M4**.
+Acceptance E2E scenarios from the master prompt: **1 ✅, 2 ✅, 4 ✅** automated; **3 ✅** (all four master-prompt scenarios automated).
 M5/M10 are *not* met: no Windows run, no accessibility audit, no designer sign-off.
 
 ## 3. Layout
@@ -68,14 +68,15 @@ Dependency direction: `raster-ref ← document ← commands ← codecs/editor`; 
 | Narrow IPC, contextIsolation, sandbox, CSP, navigation/window.open denied | Implemented | not independently audited |
 | Place image as layer | Implemented | not Action-recordable |
 | History panel (jump), Color panel, Properties, Layers | Implemented | |
-| Actions panel / record / batch | **Planned (M4)** – no UI shown | |
+| Actions: record, stop, name, save/load (.psaction), replay (undoable, atomic), allow-listed validation | Implemented | absolute coordinates; symbolic layer targets |
+| Batch: folder in/out, naming template, overwrite policy, isolated docs, bounded concurrency, progress, cancel, per-file report | Implemented | cancel verified in unit test with fake IO (not clicked in E2E); runs on renderer main thread |
+| Flattened TIFF + flattened PSD (composite only) export | Implemented | validated by Pillow + ImageMagick; **not** layered, no ICC |
 | WebGL2 per-layer compositor (12 blend modes, masks, opacity, offsets, isolated groups, RGBA32F premultiplied accumulation), CPU fallback, context-loss recovery, resource cleanup | Implemented | tiles ≤ 4096² per call; layer pixels uploaded per region (no persistent GPU texture cache yet); GPU readback per tile |
 | Linear-light blending option (`canvas.blendSpace`, format 1.1, undoable command, View menu) | Implemented | CPU + GPU; resampling/brush/fill remain on encoded sRGB |
 | ICC, CMYK, soft proof, 16-bit/float | Planned (M6/M7) | |
 | Rulers, guides (model only), dockable panels, workspace presets, shortcut editor, Photoshop-like preset | Planned (M10) | |
 | Crop/resample, lasso/wand, feather, gradients, patterns, clone/heal, curves/levels, filters, effects, clipping, adjustment layers | Planned (M9) | |
 | PSD/PSB (any form) | Planned (M8) – **no primary-source research done yet** | |
-| TIFF, flattened PSD | Planned (M4) | |
 
 ## 5. What was verified (and how)
 **Unit/integration (`npm test`, 57 tests):** tiles (sparse, boundaries, negative coords, COW, fill-255 masks) · brush (no gaps on
@@ -130,7 +131,6 @@ brush, fill, resampling, masks, opacity = encoded sRGB / linear coverage; displa
 See `docs/03-dependency-license-assessment.md` and `npm run licenses`.
 
 ## 9. Exact next steps
-2. **M4**: Actions = recorded `HistoryEntry.commands` (already stored with type/version/params; skip `recordable:false`); allow-list validation on load; Actions panel; batch runner with one `Engine` per job (packages are DOM-free so it can run in a utility process); flattened TIFF or PSD export validated by an independent tool (`tiffinfo`/`psd-tools`).
 3. Run the app on Windows 10/11 and fix platform issues (paths, fonts, sandbox flags) before calling M2 fully accepted.
 4. Measure in-app brush latency and compositing frame time on 20–50 Mpx documents; decide on worker/OffscreenCanvas compositing.
 5. Research PSD/PSB from Adobe's public file-format documentation and fill the format matrix before writing any parser (M8).

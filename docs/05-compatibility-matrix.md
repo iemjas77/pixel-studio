@@ -17,8 +17,8 @@ drift). Feature intent is in `02-feature-workflow-spec.md`.
 | JPEG | decoder | quality-controlled export | Partial (M2) | no ICC; EXIF orientation applied by Chromium; no CMYK JPEG |
 | WebP | decoder | export | Partial (M2) | lossy/lossless per quality |
 | GIF/BMP | decode first frame | – | Partial (M2) | |
-| TIFF | – | – | Planned (M4 candidate) | |
-| PSD flattened composite | – | – | Planned (M4) | will be labelled “flattened PSD”, not layered support |
+| TIFF | – | flattened RGBA 8-bit uncompressed | Partial (M4) | write-only; validated by Pillow + ImageMagick; no ICC/compression/16-bit/layers |
+| PSD flattened composite | – | merged RGB8 + transparency, raw | Partial (M4) | labelled “flattened PSD”; write-only; Pillow + ImageMagick read it; **not layered PSD compatibility**; Adobe apps untested |
 | PSD/PSB layered | – | – | **Planned; primary-source research not yet done** (M8) | feature rows to fill from Adobe's public file-format documentation: composite, layers/bounds, alpha/masks, groups/clipping, blend modes, ICC resource, text/adjustments/effects, unknown tagged blocks, compression + depth, PSB 64-bit lengths |
 | SVG/PDF/RAW | – | – | Not in roadmap | |
 

@@ -1,4 +1,5 @@
 import { TileStore, TileWriter } from '@ps/raster';
+import { writeFlatPsd, writeFlatTiff } from '@ps/codecs';
 import { MAX_CANVAS_SIDE, flattenDocument, type PixelResolver, type PsDocument } from '@ps/document';
 
 export const IMPORT_MAX_PIXELS = 64_000_000;
@@ -38,14 +39,16 @@ export async function decodeImage(bytes: Uint8Array): Promise<DecodedImage> {
   } finally { bmp.close(); }
 }
 
-export type ExportFormat = 'png' | 'jpg' | 'webp';
-const MIME: Record<ExportFormat, string> = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
+export type ExportFormat = 'png' | 'jpg' | 'webp' | 'tif' | 'psd';
+const MIME: Record<'png' | 'jpg' | 'webp', string> = { png: 'image/png', jpg: 'image/jpeg', webp: 'image/webp' };
 
 /** Flatten the visible composite and encode it. This is a FLATTENED export (layers are not preserved). */
 export async function exportFlattened(doc: PsDocument, fmt: ExportFormat, quality: number, resolve: PixelResolver): Promise<Uint8Array> {
   const { width, height } = doc.canvas;
   if (width * height > EXPORT_MAX_PIXELS) throw new UserError(`Export is limited to ${EXPORT_MAX_PIXELS / 1e6} megapixels in the preview build.`);
   const rgba = flattenDocument(doc, resolve);
+  if (fmt === 'tif') return writeFlatTiff({ width, height, rgba, ppi: doc.canvas.resolutionPpi });
+  if (fmt === 'psd') return writeFlatPsd({ width, height, rgba, ppi: doc.canvas.resolutionPpi });
   const src = new OffscreenCanvas(width, height);
   src.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(rgba.buffer as ArrayBuffer), width, height), 0, 0);
   let out = src;
@@ -63,4 +66,22 @@ export async function exportFlattened(doc: PsDocument, fmt: ExportFormat, qualit
 export function sniffKind(bytes: Uint8Array): 'pstudio' | 'image' {
   const m = [0x50, 0x53, 0x54, 0x55, 0x44, 0x49, 0x4f];
   return m.every((v, i) => bytes[i] === v) ? 'pstudio' : 'image';
+}
+
+import { RandomIdSource, createDocument, createRasterLayer } from '@ps/document';
+import { readPstudio } from '@ps/codecs';
+
+/** Decode any supported file into a fresh document (never touches existing documents). */
+export async function docFromBytes(fileName: string, bytes: Uint8Array): Promise<{ doc: PsDocument; warnings: string[] }> {
+  if (sniffKind(bytes) === 'pstudio') {
+    const r = readPstudio(bytes);
+    return { doc: r.doc, warnings: r.warnings };
+  }
+  const img = await decodeImage(bytes);
+  const ids = new RandomIdSource();
+  const doc = createDocument(ids, { name: fileName.replace(/\.[^.]+$/, ''), width: img.width, height: img.height });
+  const layer = createRasterLayer(ids, fileName);
+  layer.pixels = img.store;
+  doc.layers.push(layer);
+  return { doc, warnings: [] };
 }

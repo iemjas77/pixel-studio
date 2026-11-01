@@ -139,12 +139,13 @@ export class Engine {
   }
 
   /** Run several commands as ONE history entry; all-or-nothing. */
-  executeBatch(label: string, cmds: CommandInput[]): CommandResult[] {
+  executeBatch(label: string, cmds: CommandInput[], resolve?: (cmd: CommandInput, index: number, prior: CommandResult[]) => CommandInput): CommandResult[] {
     const tx = new Tx(this.doc);
     const results: CommandResult[] = [];
     const recorded: RecordedCommand[] = [];
     try {
-      for (const cmd of cmds) {
+      for (let ci = 0; ci < cmds.length; ci++) {
+        const cmd = resolve ? resolve(cmds[ci], ci, results) : cmds[ci];
         const def = this.registry.get(cmd.type);
         if (!def) throw new CommandError('unknown-command', `unknown command: ${cmd.type}`);
         try { validate(def.schema, cmd.params); } catch (e) {

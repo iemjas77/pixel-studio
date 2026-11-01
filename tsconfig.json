@@ -18,7 +18,8 @@
       "@ps/raster": ["packages/raster-ref/src/index.ts"],
       "@ps/document": ["packages/document/src/index.ts"],
       "@ps/commands": ["packages/commands/src/index.ts"],
-      "@ps/codecs": ["packages/codecs/src/index.ts"]
+      "@ps/codecs": ["packages/codecs/src/index.ts"],
+      "@ps/automation": ["packages/automation/src/index.ts"]
     }
   },
   "include": ["packages/*/src", "apps/*/src", "tests", "apps/*/*.ts", "*.ts"]

@@ -8,6 +8,7 @@ import { PsFormatError, readPstudio, writePstudio } from '@ps/codecs';
 import { CompositeCache, fitView, zoomAt, type ViewState, MIN_ZOOM, MAX_ZOOM } from './viewport';
 import { TextCache, rasterizeText } from './text';
 import { GpuCompositor } from './gpu';
+import { ActionRecorder, parseActionJson, replayAction, serializeAction, type Action } from '@ps/automation';
 import { UserError, decodeImage, exportFlattened, sniffKind, type ExportFormat } from './io';
 import type { PixelStudioApi } from '../../desktop/src/preload';
 
@@ -17,7 +18,7 @@ export type ToolId = 'move' | 'marquee' | 'brush' | 'eraser' | 'text' | 'eyedrop
 export type RGB = [number, number, number];
 
 export type Dialog =
-  | { kind: 'new' } | { kind: 'scale' } | { kind: 'about' } | { kind: 'shortcuts' }
+  | { kind: 'new' } | { kind: 'batch' } | { kind: 'nameAction' } | { kind: 'scale' } | { kind: 'about' } | { kind: 'shortcuts' }
   | { kind: 'export'; fmt: 'jpg' | 'webp' }
   | { kind: 'message'; title: string; message: string }
   | { kind: 'confirm'; title: string; message: string; buttons: { label: string; primary?: boolean; run: () => void | Promise<void> }[] }
@@ -69,6 +70,61 @@ export class EditorStore {
   private rafPending = false;
   private pixelHandoff: TileStore | null = null;
   textFocusRequest = 0;
+  // ---------- actions ----------
+  actions: Action[] = loadActions();
+  selectedAction = 0;
+  recorder: { rec: ActionRecorder; session: DocSession } | null = null;
+  lastRecordNotes: string[] = [];
+  startRecording() {
+    const s = this.active;
+    if (!s) return this.setStatus('Open a document to record an action.', 'error');
+    this.commitPreview();
+    const rec = new ActionRecorder(s.engine, () => s.activeLayerId);
+    rec.start();
+    this.recorder = { rec, session: s };
+    this.setStatus('Recording action… perform edits, then press Stop.');
+  }
+  stopRecording(name: string | null) {
+    if (!this.recorder) return;
+    const { rec } = this.recorder;
+    const action = rec.stop(name || 'Untitled action');
+    this.lastRecordNotes = [...new Set(rec.skipped)];
+    this.recorder = null;
+    if (name === null) { this.setStatus('Recording discarded.'); return; }
+    if (!action.steps.length) { this.showMessage('Nothing recorded', 'No recordable steps were performed.' + (this.lastRecordNotes.length ? '\n\n' + this.lastRecordNotes.join('\n') : '')); return; }
+    this.actions.push(action); this.selectedAction = this.actions.length - 1; saveActions(this.actions);
+    this.setStatus(`Recorded “${action.name}” (${action.steps.length} steps)${this.lastRecordNotes.length ? ' – some steps were skipped' : ''}`);
+    if (this.lastRecordNotes.length) this.showMessage('Recorded with notes', this.lastRecordNotes.join('\n'));
+  }
+  playAction(i = this.selectedAction) {
+    const s = this.active; const a = this.actions[i];
+    if (!s || !a) return;
+    this.commitPreview();
+    const rep = replayAction(s.engine, a, { activeLayerId: s.activeLayerId });
+    if (rep.ok) { if (rep.activeLayerId) s.activeLayerId = rep.activeLayerId; this.notify(); this.setStatus(`Played “${a.name}” (${rep.executed} steps) – one undo step`); }
+    else this.showMessage('Action failed – document unchanged', rep.error ?? 'Unknown error');
+  }
+  deleteAction(i: number) { this.actions.splice(i, 1); this.selectedAction = Math.max(0, Math.min(this.selectedAction, this.actions.length - 1)); saveActions(this.actions); this.notify(); }
+  async saveActionFile(i = this.selectedAction) {
+    const a = this.actions[i]; if (!a || !window.pixelStudio) return;
+    try {
+      const r = await window.pixelStudio.exportFile({ bytes: new TextEncoder().encode(serializeAction(a)), suggestedName: `${a.name}.psaction`, ext: 'psaction' });
+      this.setStatus(r ? `Saved action → ${r.name}` : 'Cancelled');
+    } catch (e) { this.fail(e); }
+  }
+  async loadActionFile() {
+    if (!window.pixelStudio) return;
+    try {
+      const f = await window.pixelStudio.openFile('action');
+      if (!f) return;
+      const reg = this.active?.engine.registry ?? createDefaultRegistry();
+      const r = parseActionJson(new TextDecoder().decode(f.bytes), reg);
+      if (!r.action) { this.showMessage('Cannot load action', r.errors.slice(0, 12).join('\n') + (r.errors.length > 12 ? `\n…and ${r.errors.length - 12} more` : '') + '\n\nNothing was imported or executed.'); return; }
+      this.actions.push(r.action); this.selectedAction = this.actions.length - 1; saveActions(this.actions);
+      this.setStatus(`Loaded action “${r.action.name}” (${r.action.steps.length} steps)`);
+    } catch (e) { this.fail(e); }
+  }
+
   /** GPU compositing backend (null when WebGL2 is unavailable); user may force CPU. */
   gpu: GpuCompositor | null = (() => { try { const g = new GpuCompositor(); return g.available ? g : null; } catch { return null; } })();
   gpuMode: 'auto' | 'cpu' = 'auto';
@@ -424,6 +480,17 @@ export class EditorStore {
     if (document.title !== t) { document.title = t; void window.pixelStudio?.setTitle(t); }
   }
 }
+
+function loadActions(): Action[] {
+  try {
+    const raw = localStorage.getItem('ps.actions.v1');
+    if (!raw) return [];
+    const reg = createDefaultRegistry();
+    const arr = JSON.parse(raw) as unknown[];
+    return arr.map(a => parseActionJson(JSON.stringify(a), reg).action).filter((a): a is Action => !!a);
+  } catch { return []; }
+}
+function saveActions(a: Action[]) { try { localStorage.setItem('ps.actions.v1', JSON.stringify(a)); } catch { /* storage unavailable */ } }
 
 export const store = new EditorStore();
 gpuForNewSession = () => (store.gpuMode === 'auto' ? store.gpu : null);

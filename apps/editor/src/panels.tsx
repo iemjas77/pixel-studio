@@ -281,3 +281,34 @@ export function HistoryPanel() {
 }
 
 void walkLayers;
+
+// ------------------------------------------------------------------ Actions
+export function ActionsPanel() {
+  const st = useStore();
+  const rec = !!st.recorder;
+  const a = st.actions[st.selectedAction];
+  return (
+    <Panel title="Actions" actions={<>
+      {!rec
+        ? <button className="icon-btn txt" disabled={!st.active} onClick={() => st.startRecording()} aria-label="Record action" data-testid="act-record">● Rec</button>
+        : <button className="icon-btn txt rec" onClick={() => { st.dialog = { kind: 'nameAction' }; st.notify(); }} aria-label="Stop recording" data-testid="act-stop">■ Stop ({st.recorder!.rec.stepCount})</button>}
+      <button className="icon-btn txt" disabled={!a || !st.active || rec} onClick={() => st.playAction()} aria-label="Play action" data-testid="act-play">▶ Play</button>
+    </>}>
+      {rec && <p className="warn small pad" role="status">Recording… edits to the active document are captured. Undo removes the step.</p>}
+      <ul className="actions" aria-label="Actions" data-testid="actions">
+        {st.actions.length === 0 && !rec && <li className="muted pad">No actions yet. Press ● Rec, edit, then ■ Stop.</li>}
+        {st.actions.map((x, i) => (
+          <li key={i} className={i === st.selectedAction ? 'cur' : ''}>
+            <button onClick={() => { st.selectedAction = i; st.notify(); }} onDoubleClick={() => st.playAction(i)} title={x.steps.map(s => s.type).join(' → ')}>{x.name} <span className="muted small">· {x.steps.length} steps</span></button>
+          </li>
+        ))}
+      </ul>
+      <div className="seg actionbtns">
+        <button onClick={() => void st.loadActionFile()}>Load…</button>
+        <button disabled={!a} onClick={() => void st.saveActionFile()}>Save…</button>
+        <button disabled={!a} onClick={() => st.deleteAction(st.selectedAction)}>Delete</button>
+        <button disabled={!a} onClick={() => { st.dialog = { kind: 'batch' }; st.notify(); }} data-testid="act-batch">Batch…</button>
+      </div>
+    </Panel>
+  );
+}
